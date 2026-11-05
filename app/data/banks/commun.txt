@@ -1,0 +1,100 @@
+# Tronc commun : posé à tous les métiers.
+# Format : NIVEAU|compétence fine|question|+bonne réponse|~réponse partielle (facultatif)|mauvaise|mauvaise
+# NIVEAU : S = simple, M = moyenne, D = difficile.
+
+@F Français écrit
+S|Orthographe d’une formule courante|Choisissez la phrase correctement écrite.|+Nous vous remercions de votre appel et restons à votre disposition.|Nous vous remerçions de votre appel et restons à votre disposition.|Nous vous remercions de votre appel et resterons a votre disposition.|Nous vous remercions de vôtre appel et restons à votre disposition.
+M|Accord du participe passé|Complétez : « Les documents que vous nous avez … sont complets. »|+envoyés|envoyé|envoyer|envoyées
+S|Formule d’appel|Quelle formule convient pour commencer un courriel à une personne que vous ne connaissez pas ?|+Madame, Monsieur,|Salut,|Coucou,|Hé,
+M|Conjugaison au futur|Complétez : « Dès que le service aura répondu, je vous … le dossier. »|+enverrai|envoierai|enverrais|envoyerai
+M|Ton professionnel|Quelle phrase annonce un retard de façon professionnelle ?|+Nous vous prions d’excuser ce retard : votre dossier sera traité sous 48 heures.|Désolé, on est débordés, ça va venir.|Ce n’est pas de notre faute, il faut attendre.|Votre dossier est en retard comme tous les autres.
+M|Accord avec le sujet|Complétez : « Votre demande a bien été … en compte. »|+prise|pris|prit|prises
+D|Homophones|Complétez : « … la raison de votre appel, nous vous répondrons. »|+Quelle que soit|Quel que soit|Quelque soit|Quelle que soient
+S|Homophones a / à|Complétez : « Le dossier … été envoyé … la direction. »|+a / à|à / a|a / a|à / à
+S|Homophones et / est|Complétez : « Le rapport … prêt … il sera envoyé ce soir. »|+est / et|et / est|est / est|et / et
+M|Homophones ces / ses / c’est|Complétez : « Le directeur a signé … documents ce matin. »|+ces|ses|c’est|s’est
+M|Homophones son / sont|Complétez : « Les candidats … convoqués lundi avec … dossier. »|+sont / leur|son / leur|sont / son|son / sont
+M|Accord de l’adjectif|Choisissez la phrase correcte.|+Les réunions prévues demain sont annulées.|Les réunions prévu demain sont annulées.|Les réunions prévues demain sont annulés.|Les réunions prévue demain sont annulée.
+M|Conditionnel de politesse|Quelle phrase est la plus polie pour une demande écrite ?|+Pourriez-vous me transmettre le document avant vendredi ?|Transmettez-moi le document avant vendredi.|Vous devez me transmettre le document avant vendredi.|Il me faut le document avant vendredi.
+S|Formule de conclusion|Quelle formule convient pour terminer un courriel professionnel ?|+Je vous prie d’agréer, Madame, Monsieur, mes salutations distinguées.|Bisous.|À plus.|Ciao.
+M|Pluriel des noms composés|Quelle orthographe est correcte ?|+des après-midi|des après-midis|des après-midies|des aprés-midi
+M|Infinitif ou participe|Complétez : « Nous allons … votre demande. »|+étudier|étudié|étudiez|étudiée
+M|Infinitif ou participe|Complétez : « Votre demande a été … avec attention. »|+étudiée|étudier|étudiez|étudié
+D|Accord du participe avec avoir|Complétez : « Les offres que nous avons … ce matin sont intéressantes. »|+reçues|reçu|reçus|reçue
+D|Participe passé suivi d’un infinitif|Complétez : « Les clients que nous avons … appeler ont tous répondu. »|+entendus|entendu|entendues|entendre
+S|Majuscules|Quelle phrase respecte les majuscules ?|+La réunion aura lieu à Dakar, lundi 12 mai.|La réunion aura lieu à dakar, Lundi 12 Mai.|la réunion aura lieu à Dakar, lundi 12 mai.|La Réunion aura lieu à Dakar, Lundi 12 mai.
+M|Vocabulaire professionnel|Que signifie « en pièce jointe » dans un courriel ?|+Un fichier est joint au message|Le message est urgent|Le message a été transféré|Une réunion est prévue
+M|Vocabulaire professionnel|Que signifie « accuser réception » d’un courrier ?|+Confirmer qu’on l’a bien reçu|Refuser le courrier|Répondre point par point|Transmettre le courrier à un collègue
+M|Synonyme|Quel mot peut remplacer « échéance » dans « l’échéance est fixée au 30 juin » ?|+Date limite|Rendez-vous|Paiement|Réunion
+M|Ponctuation|Quelle phrase est correctement ponctuée ?|+Merci de m’envoyer : le contrat, la facture et le devis.|Merci de m’envoyer, le contrat la facture, et le devis.|Merci, de m’envoyer le contrat la facture et le devis.|Merci de m’envoyer le contrat, la facture, et, le devis.
+D|Subjonctif|Complétez : « Il faut que vous … ce formulaire avant midi. »|+remplissiez|remplissez|remplirez|remplissiiez
+M|Concordance des temps|Complétez : « Si vous m’aviez prévenu, je … venu plus tôt. »|+serais|serai|suis|serait
+S|Orthographe d’usage|Quel mot est bien écrit ?|+rendez-vous|rendez vous|rendevous|rendé-vous
+S|Orthographe d’usage|Quel mot est bien écrit ?|+professionnel|proffessionnel|profesionnel|professionel
+M|Orthographe d’usage|Quel mot est bien écrit ?|+néanmoins|néamoins|néanmoin|nénmoins
+M|Clarté d’un message|Quel objet de courriel est le plus clair ?|+Demande de congé du 10 au 14 mars|Question|Urgent !!!|Bonjour
+M|Reformulation|Quelle phrase dit la même chose que « Le dossier est incomplet, il manque votre pièce d’identité » ?|+Merci de nous envoyer votre pièce d’identité pour compléter le dossier.|Votre dossier est refusé définitivement.|Votre pièce d’identité n’est pas valable.|Votre dossier est complet.
+D|Accord de « leur »|Complétez : « Nous … avons envoyé … contrats. »|+leur / leurs|leurs / leur|leur / leur|leurs / leurs
+M|Négation|Quelle phrase est correcte à l’écrit ?|+Nous n’avons reçu aucun paiement.|Nous avons reçu aucun paiement.|Nous n’avons pas reçu aucun paiement.|Nous avons pas reçu de paiement.
+M|Mot juste|Complétez : « Le client a … une réclamation. »|+déposé|déposer|déposez|déposait
+D|Pronom relatif|Complétez : « C’est le projet … je vous ai parlé. »|+dont|que|qui|où
+M|Lecture d’une consigne|Une consigne dit : « Joindre une copie, sauf pour les dossiers déjà enregistrés. » Un dossier déjà enregistré doit-il avoir une copie ?|+Non|Oui|Oui, en deux exemplaires|Seulement s’il est urgent
+
+@L Logique et calcul
+S|Proportionnalité|Une personne traite 48 dossiers en 8 heures. Au même rythme, combien en 5 heures ?|+30|35|24|40
+S|Calcul d’un taux|Sur 200 dossiers, 150 sont traités dans les délais. Quel est le taux ?|+75 %|70 %|80 %|65 %
+S|Suite logique|Quelle est la valeur suivante : 3, 6, 12, 24, … ?|+48|30|36|42
+M|Lecture d’un objectif|L’objectif est de 90 % de clients satisfaits. Sur 60 clients interrogés, 51 sont satisfaits. L’objectif est-il atteint ?|+Non, 85 %|Oui, 90 %|Oui, 92 %|Non, 80 %
+M|Règle de trois|Une équipe de 5 personnes traite 400 demandes par jour. Avec 2 personnes de plus, au même rythme, combien par jour ?|+560|480|600|520
+D|Variation en pourcentage|Un délai passe de 40 à 30 jours. De combien a-t-il baissé ?|+25 %|10 %|33 %|30 %
+S|Calcul simple|Un carton contient 12 ramettes. Combien de ramettes dans 7 cartons ?|+84|74|82|96
+S|Pourcentage simple|Combien font 10 % de 45 000 F CFA ?|+4 500 F CFA|450 F CFA|45 000 F CFA|4 050 F CFA
+M|Pourcentage|Combien font 15 % de 80 000 F CFA ?|+12 000 F CFA|8 000 F CFA|15 000 F CFA|10 500 F CFA
+M|Remise|Un article coûte 20 000 F CFA. Avec une remise de 25 %, combien coûte-t-il ?|+15 000 F CFA|5 000 F CFA|17 500 F CFA|16 000 F CFA
+D|Hausse puis baisse|Un prix augmente de 10 %, puis baisse de 10 %. Par rapport au prix de départ, il est :|+plus bas de 1 %|identique|plus haut de 1 %|plus bas de 10 %
+S|Durée|Une réunion commence à 9 h 45 et dure 1 h 30. À quelle heure finit-elle ?|+11 h 15|10 h 75|11 h 45|10 h 15
+M|Durée|Un agent travaille de 8 h 30 à 17 h avec 1 heure de pause. Combien d’heures travaille-t-il ?|+7 h 30|8 h 30|8 h|7 h
+S|Moyenne|Quelle est la moyenne de 12, 15 et 18 ?|+15|14|16|45
+M|Moyenne pondérée|Un candidat a 12 à une épreuve coefficient 1 et 15 à une épreuve coefficient 2. Quelle est sa moyenne ?|+14|13,5|13|15
+S|Suite logique|Quelle est la valeur suivante : 2, 5, 8, 11, … ?|+14|13|15|16
+M|Suite logique|Quelle est la valeur suivante : 1, 4, 9, 16, … ?|+25|20|24|32
+D|Suite logique|Quelle est la valeur suivante : 1, 1, 2, 3, 5, 8, … ?|+13|11|12|16
+M|Suite de lettres|Quelle lettre vient ensuite : A, C, E, G, … ?|+I|H|J|K
+M|Raisonnement|Tous les commerciaux de l’équipe ont le permis. Awa est commerciale dans l’équipe. Donc :|+Awa a le permis|Awa n’a pas le permis|Tous ceux qui ont le permis sont commerciaux|On ne peut rien conclure
+D|Raisonnement|Certains employés parlent anglais. Tous ceux qui parlent anglais suivent la formation. Que peut-on conclure ?|+Certains employés suivent la formation|Tous les employés suivent la formation|Aucun employé ne suit la formation|Tous ceux qui suivent la formation sont employés
+M|Ordre|Moussa est plus grand que Fatou. Fatou est plus grande que Ibou. Qui est le plus petit ?|+Ibou|Fatou|Moussa|On ne peut pas savoir
+D|Planning|Trois réunions d’1 heure doivent avoir lieu entre 8 h et 12 h, sans se chevaucher, avec 30 minutes de pause entre chacune. À quelle heure, au plus tard, peut commencer la première ?|+8 h|8 h 30|9 h|9 h 30
+M|Lecture de tableau|Les ventes sont de 120 en janvier, 150 en février et 90 en mars. Quel mois a la plus forte baisse par rapport au mois précédent ?|+Mars|Février|Janvier|Aucun
+M|Conversion|Combien de minutes y a-t-il dans 2,5 heures ?|+150|125|250|130
+S|Calcul mental|Combien font 250 × 4 ?|+1 000|900|1 250|10 000
+M|Partage|Une prime de 90 000 F CFA est partagée entre 3 personnes à parts égales. Combien chacune reçoit-elle ?|+30 000 F CFA|27 000 F CFA|33 000 F CFA|45 000 F CFA
+M|Partage proportionnel|Une prime de 60 000 F CFA est partagée entre deux personnes dans le rapport 1 pour 2. Combien reçoit la seconde ?|+40 000 F CFA|30 000 F CFA|20 000 F CFA|45 000 F CFA
+D|Rendement|Une machine imprime 300 pages en 6 minutes. Combien de temps pour 1 250 pages ?|+25 minutes|20 minutes|24 minutes|30 minutes
+M|Taux d’absentéisme|Sur 20 jours ouvrés, une équipe de 10 personnes cumule 8 jours d’absence. Quel est le taux d’absentéisme ?|+4 %|8 %|2 %|0,8 %
+D|Raisonnement chiffré|Si 3 personnes préparent 3 salles en 3 heures, combien de temps faut-il à 6 personnes pour préparer 6 salles ?|+3 heures|6 heures|1 h 30|12 heures
+S|Comparaison|Quelle offre est la moins chère pour 10 articles ? A : 1 200 F l’unité. B : 11 000 F le lot de 10.|+B|A|Les deux sont égales|On ne peut pas savoir
+M|Estimation|Un trajet de 120 km se fait à 60 km/h en moyenne. Combien de temps dure-t-il ?|+2 heures|1 h 30|2 h 30|3 heures
+D|Taux de transformation|50 rendez-vous ont donné 8 ventes. Combien de rendez-vous faut-il, au même taux, pour 20 ventes ?|+125|100|160|80
+M|Logique d’intrus|Quel mot est l’intrus ? Facture, devis, bon de commande, ordinateur.|+Ordinateur|Facture|Devis|Bon de commande
+
+@S Savoir-être professionnel
+S|Ponctualité|Vous serez en retard de 20 minutes à cause des embouteillages. Que faites-vous ?|+Prévenir votre responsable dès que possible, en donnant l’heure d’arrivée prévue|~Arriver et vous excuser une fois sur place|Ne rien dire : 20 minutes, ce n’est pas grave|Rester chez vous pour la matinée
+M|Erreur personnelle|Vous découvrez une erreur que vous avez commise hier dans un document envoyé. Que faites-vous ?|+La signaler à votre responsable et proposer une correction|~La corriger discrètement sans en parler|Attendre que quelqu’un s’en aperçoive|Accuser un collègue
+M|Désaccord avec le responsable|Vous n’êtes pas d’accord avec une consigne de votre responsable. Quelle attitude est la plus adaptée ?|+En parler avec lui calmement, en privé, avec vos arguments|~Appliquer la consigne sans rien dire|Refuser d’appliquer la consigne|Critiquer la consigne devant l’équipe
+M|Conflit entre collègues|Deux collègues se disputent bruyamment dans le bureau. Que faites-vous ?|+Proposer de calmer l’échange et, si besoin, prévenir le responsable|~Ignorer et continuer votre travail|Prendre parti pour l’un des deux|Filmer la scène
+D|Surcharge de travail|On vous confie une tâche urgente alors que vous en avez déjà trois pour la journée. Que faites-vous ?|+Informer votre responsable et lui demander quelles priorités fixer|~Tout accepter et rester tard sans rien dire|Refuser la nouvelle tâche|Faire les tâches à moitié pour aller plus vite
+S|Confidentialité|Un ami vous demande le salaire d’un collègue, que vous connaissez grâce à votre poste. Que faites-vous ?|+Refuser poliment : c’est une information confidentielle|Le lui dire s’il promet de garder le secret|Lui donner une fourchette approximative|Lui conseiller de demander au collègue de votre part
+M|Esprit d’équipe|Un collègue nouvellement arrivé semble perdu. Que faites-vous ?|+Lui proposer votre aide et lui indiquer à qui s’adresser|~Attendre qu’il vous demande|Considérer que ce n’est pas votre rôle|En parler aux autres collègues
+M|Retour critique|Votre responsable critique votre travail devant vous. Quelle réaction est la plus professionnelle ?|+Écouter, demander des précisions et proposer des améliorations|~Accepter sans rien dire|Vous justifier en coupant la parole|Quitter la réunion
+D|Intégrité|Un fournisseur vous propose un cadeau de valeur en échange d’une commande. Que faites-vous ?|+Refuser et en informer votre responsable|~Refuser sans en parler|Accepter, puisque tout le monde le fait|Accepter et choisir quand même le meilleur fournisseur
+S|Usage du téléphone|Pendant une réunion, votre téléphone personnel sonne. Que faites-vous ?|+Le mettre en silencieux et rappeler après la réunion|~Sortir répondre rapidement|Répondre dans la salle à voix basse|Le laisser sonner
+M|Délai impossible|On vous demande un travail pour demain, mais vous savez qu’il faut deux jours pour bien le faire. Que faites-vous ?|+Le dire tout de suite et proposer ce qui peut être livré demain|~Accepter et faire de votre mieux|Accepter sans prévenir que ce sera incomplet|Ne pas répondre
+M|Absence imprévue|Vous êtes malade un matin et ne pouvez pas venir. Que faites-vous ?|+Prévenir avant l’heure de prise de poste et suivre la procédure de justification|~Prévenir dans l’après-midi|Ne rien dire et revenir le lendemain|Demander à un collègue de mentir pour vous
+D|Information sensible|Vous recevez par erreur un courriel contenant des informations confidentielles sur d’autres salariés. Que faites-vous ?|+Prévenir l’expéditeur, ne pas le diffuser et le supprimer si on vous le demande|~Le supprimer sans rien dire|Le transférer à un collègue de confiance|Le garder au cas où
+S|Tenue professionnelle|Un client important vient vous rencontrer demain. Que faites-vous ?|+Préparer le rendez-vous et adopter une tenue adaptée à l’image de l’entreprise|~Venir comme d’habitude sans préparer|Annuler pour être plus tranquille|Demander au client de venir un autre jour
+M|Apprentissage|Un nouveau logiciel est installé et vous ne le maîtrisez pas. Que faites-vous ?|+Demander une formation ou un guide et vous entraîner|~Attendre qu’un collègue fasse à votre place|Continuer avec l’ancienne méthode|Dire que le logiciel ne marche pas
+M|Respect des procédures|Une procédure vous semble trop longue. Que faites-vous ?|+La suivre et proposer une amélioration à votre responsable|~La suivre sans rien dire|La sauter quand vous êtes pressé|La modifier vous-même
+D|Harcèlement|Vous êtes témoin de remarques humiliantes répétées envers une collègue. Que faites-vous ?|+Soutenir la collègue et signaler les faits au responsable ou aux RH|~En parler à la collègue seulement|Ne pas vous en mêler|En rire pour détendre l’atmosphère
+M|Réseaux sociaux|Un client désagréable vous a énervé. Que faites-vous ?|+En parler à votre responsable si besoin, sans rien publier|~En parler à vos proches sans le nommer|Publier un message sur les réseaux sociaux en le nommant|Publier sa photo
+S|Organisation|Quelle habitude aide le plus à ne pas oublier ses tâches ?|+Tenir une liste des tâches avec des échéances|Tout garder en tête|Attendre qu’on vous relance|Faire en premier ce qui plaît le plus
+M|Objectif non atteint|Vous n’avez pas atteint votre objectif du mois. Quelle est la meilleure réaction ?|+Analyser les causes avec votre responsable et fixer un plan d’action|~Promettre de faire mieux|Dire que l’objectif était irréaliste|Démissionner

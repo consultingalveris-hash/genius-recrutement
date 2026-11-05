@@ -59,7 +59,8 @@ function authPage(title,sub,form,foot){
 function bindForm(sel,fn){var f=$(sel);f.addEventListener('submit',function(e){e.preventDefault();var b=$('button[type=submit]',f);showErr(f,'');busy(b,true);
   Promise.resolve().then(function(){return fn(formData(f),f);}).catch(function(err){showErr(f,err.message);}).then(function(){busy(b,false);});});}
 var V={};
-var CAND_NOTE='</p><div class="card" style="margin-top:18px;text-align:left"><h3 style="margin-bottom:6px">Vous êtes candidat ?</h3><p class="muted small">Vous n’avez pas besoin de compte. Ouvrez le lien personnel reçu par e-mail (ou par message) de l’entreprise qui recrute : il vous mène directement à votre test.</p></div><p>';
+var LEGAL='<br><br><a href="/confidentialite.html" target="_blank" rel="noopener">Confidentialité</a> · <a href="/mentions-legales.html" target="_blank" rel="noopener">Mentions légales</a>';
+var CAND_NOTE=LEGAL+'</p><div class="card" style="margin-top:18px;text-align:left"><h3 style="margin-bottom:6px">Vous êtes candidat ?</h3><p class="muted small">Vous n’avez pas besoin de compte. Ouvrez le lien personnel reçu par e-mail (ou par message) de l’entreprise qui recrute : il vous mène directement à votre test.</p></div><p>';
 V.login=function(){
   authPage('Espace RH — connexion','Pour les recruteurs : créez vos tests et suivez les résultats de vos candidats.',
   '<form class="form" id="f"><label class="field">Adresse e-mail<input class="in" name="email" type="email" autocomplete="email" required></label>'+
@@ -97,7 +98,7 @@ V.tests=function(){var rt=ROUTE;
     var act=r.tests.filter(function(t){return !t.archived;}),arc=r.tests.filter(function(t){return t.archived;});
     function card(t){return '<a class="card col" href="#/tests/'+t.id+'" style="text-decoration:none;color:inherit">'+
       '<div class="row between"><h3>'+esc(t.title)+'</h3>'+(t.expired?'<span class="pill warn">Date passée</span>':t.archived?'<span class="pill neutral">Archivé</span>':'<span class="pill ok">Ouvert</span>')+'</div>'+
-      '<p class="small muted">'+t.count+' questions · '+t.perQ+' s par question'+(t.deadline?' · jusqu’au '+fmtDate(new Date(t.deadline+'T12:00').getTime()):'')+'</p>'+
+      '<p class="small muted">'+esc(t.familyName)+' · '+t.count+' questions · '+t.perQ+' s par question'+(t.deadline?' · jusqu’au '+fmtDate(new Date(t.deadline+'T12:00').getTime()):'')+'</p>'+
       '<div class="row small"><b>'+t.candidates+'</b> invité'+(t.candidates>1?'s':'')+'<span class="muted">·</span><b>'+t.done+'</b> terminé'+(t.done>1?'s':'')+'</div></a>';}
     app.innerHTML='<div class="wrap col"><div class="row between"><div><h1>Mes tests</h1><p class="muted" style="margin-top:4px">Un test par poste à pourvoir. Ouvrez-en un pour inviter des candidats et voir le classement.</p></div><a class="btn primary" href="#/tests/new">+ Nouveau test</a></div>'+
       (act.length?'<div class="grid">'+act.map(card).join('')+'</div>':'<div class="card empty"><h2 style="color:var(--fg)">Aucun test pour l’instant</h2><p style="margin:8px 0 18px">Commencez par créer le test du poste que vous voulez pourvoir.</p><a class="btn primary" href="#/tests/new">Créer mon premier test</a></div>')+
@@ -114,9 +115,10 @@ V.testForm=function(id){var rt=ROUTE;
     app.innerHTML='<div class="wrap" style="max-width:760px"><a href="'+(id?'#/tests/'+id:'#/tests')+'" class="small">← Retour</a>'+
     '<h1 style="margin:10px 0 18px">'+(id?'Modifier le test':'Nouveau test')+'</h1>'+
     '<form class="card form" id="f">'+
+    '<label class="field">Métier du test <span class="hint">Les questions de connaissances et de mises en situation sont tirées dans ce métier. Français et logique sont communs à tous.</span><select class="in" name="family">'+META.families.map(function(f){return '<option value="'+f.k+'"'+((t.family||'cc')===f.k?' selected':'')+'>'+esc(f.name)+'</option>';}).join('')+'</select></label>'+
     '<label class="field">Poste à pourvoir <span class="hint">Il apparaît dans l’e-mail envoyé au candidat.</span><input class="in" name="title" required maxlength="160" value="'+esc(t.title)+'" placeholder="Ex. : Conseiller clientèle – centre d’appels"></label>'+
     '<label class="field">E-mail de réception des résultats <span class="hint">Vous y recevez un message à chaque test terminé. Les candidats peuvent aussi y répondre.</span><input class="in" name="replyEmail" type="email" required value="'+esc(t.replyEmail)+'"></label>'+
-    '<div class="two"><label class="field">Nombre de questions'+sel('count',[10,15,20,25,30,35].filter(function(n){return n<=META.bankSize;}),t.count,function(v){return v+' questions';})+'</label>'+
+    '<div class="two"><label class="field">Nombre de questions'+sel('count',[10,15,20,25,30,35,40],t.count,function(v){return v+' questions';})+'</label>'+
     '<label class="field">Temps par question'+sel('perQ',[15,20,30,45,60],t.perQ,function(v){return v+' secondes';})+'</label></div>'+
     '<label class="field">Date limite <span class="hint">Facultatif. Après cette date, le lien ne permet plus de commencer.</span><input class="in" name="deadline" type="date" value="'+esc(t.deadline)+'"></label>'+
     '<fieldset style="border:1px solid var(--line);border-radius:12px;padding:14px 16px"><legend style="font-weight:700;padding:0 6px">Poids de chaque compétence dans la note</legend>'+
@@ -125,7 +127,7 @@ V.testForm=function(id){var rt=ROUTE;
     '<label class="check"><input type="checkbox" name="back"'+(t.back?' checked':'')+'><span><b>Autoriser le retour à la question précédente</b><br><span class="muted">Le candidat peut revenir sur une question tant qu’il lui reste du temps pour elle.</span></span></label>'+
     '<p class="err" hidden></p><div class="row"><button class="btn primary" type="submit">'+(id?'Enregistrer':'Créer le test')+'</button><a class="btn" href="'+(id?'#/tests/'+id:'#/tests')+'">Annuler</a></div></form></div>';
     bindForm('#f',function(d){
-      var body={title:d.title,replyEmail:d.replyEmail,count:+d.count,perQ:+d.perQ,deadline:d.deadline,back:d.back,weights:{}};
+      var body={family:d.family,title:d.title,replyEmail:d.replyEmail,count:+d.count,perQ:+d.perQ,deadline:d.deadline,back:d.back,weights:{}};
       META.comps.forEach(function(c){body.weights[c.k]=+d['w_'+c.k]||0;});
       return (id?api('PUT','/api/tests/'+id,body).then(function(){return {id:id};}):api('POST','/api/tests',body)).then(function(r){toast(id?'Test enregistré.':'Test créé. Invitez maintenant vos candidats.');location.hash='#/tests/'+r.id;});
     });
@@ -154,8 +156,9 @@ V.test=function(id){var rt=ROUTE;
       }).join('');
     }
     app.innerHTML='<div class="wrap col"><a href="#/tests" class="small">← Mes tests</a>'+
-    '<div class="row between"><div><h1>'+esc(t.title)+'</h1><p class="muted" style="margin-top:4px">'+t.count+' questions · '+t.perQ+' s par question · résultats envoyés à '+esc(t.replyEmail)+(t.deadline?' · jusqu’au '+fmtDate(new Date(t.deadline+'T12:00').getTime()):'')+'</p></div>'+
+    '<div class="row between"><div><h1>'+esc(t.title)+'</h1><p class="muted" style="margin-top:4px">'+esc(t.familyName)+' · '+t.count+' questions · '+t.perQ+' s par question · résultats envoyés à '+esc(t.replyEmail)+(t.deadline?' · jusqu’au '+fmtDate(new Date(t.deadline+'T12:00').getTime()):'')+'</p></div>'+
     '<div class="row"><button class="btn primary" id="inv">+ Inviter des candidats</button><a class="btn" href="#/tests/'+t.id+'/edit">Modifier</a><button class="btn" id="arch">'+(t.archived?'Désarchiver':'Archiver')+'</button></div></div>'+
+    '<p class="small muted">Les résultats sont effacés automatiquement 12 mois après la fin du test, et les invitations jamais utilisées au bout de 3 mois. Exportez le classement si vous devez le garder plus longtemps.</p>'+
     (t.expired?'<p class="note warn">La date limite est passée : les candidats qui n’ont pas commencé ne peuvent plus le faire. Modifiez la date pour rouvrir le test.</p>':'')+
     '<div class="stats"><div class="stat"><span class="small muted">Invités</span><b>'+cands.length+'</b></div><div class="stat"><span class="small muted">En cours</span><b>'+cands.filter(function(c){return c.status==='en_cours';}).length+'</b></div><div class="stat"><span class="small muted">Terminés</span><b>'+done.length+'</b></div><div class="stat"><span class="small muted">Note moyenne</span><b>'+(avg!=null?avg+' %':'–')+'</b></div></div>'+
     '<div class="card tight"><div class="row between" style="padding:14px 16px;border-bottom:1px solid var(--line-soft)"><h2>Classement</h2><div class="row">'+

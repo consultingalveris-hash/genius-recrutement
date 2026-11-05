@@ -1,0 +1,49 @@
+# Métier : Comptabilité (référentiel SYSCOHADA révisé)
+@M Connaissances métier
+S|Partie double|Dans une écriture comptable, que doit-on toujours vérifier ?|+Que le total des débits est égal au total des crédits|Que le débit est plus grand que le crédit|Qu’il n’y a qu’un seul compte|Que le montant est arrondi
+S|Plan comptable|Dans le SYSCOHADA, quelle classe regroupe les comptes de charges des activités ordinaires ?|+La classe 6|La classe 7|La classe 4|La classe 2
+S|Plan comptable|Dans le SYSCOHADA, quelle classe regroupe les comptes de produits des activités ordinaires ?|+La classe 7|La classe 6|La classe 5|La classe 1
+M|Plan comptable|Dans le SYSCOHADA, à quoi correspond la classe 4 ?|+Aux comptes de tiers (clients, fournisseurs, État, personnel…)|Aux immobilisations|À la trésorerie|Aux stocks
+M|Plan comptable|Dans le SYSCOHADA, à quoi correspond la classe 5 ?|+Aux comptes de trésorerie (banque, caisse…)|Aux comptes de tiers|Aux charges|Aux capitaux
+M|Plan comptable|Dans le SYSCOHADA, la classe 2 regroupe :|+les immobilisations|les stocks|les produits|les capitaux propres
+S|Comptes usuels|Quel compte enregistre les dettes envers les fournisseurs ?|+401 Fournisseurs|411 Clients|521 Banques|601 Achats de marchandises
+S|Comptes usuels|Quel compte enregistre les créances sur les clients ?|+411 Clients|401 Fournisseurs|701 Ventes de marchandises|571 Caisse
+M|Achat de marchandises|Un achat de marchandises à crédit, avec TVA récupérable, s’enregistre :|+Débit achats et TVA récupérable, crédit fournisseurs|Débit fournisseurs, crédit achats|Débit banque, crédit achats|Débit achats, crédit ventes
+M|Vente de marchandises|Une vente à crédit, avec TVA facturée, s’enregistre :|+Débit clients, crédit ventes et TVA facturée|Débit ventes, crédit clients|Débit banque, crédit fournisseurs|Débit clients, crédit achats
+M|Encaissement|Un client règle sa facture par virement. Quelle écriture ?|+Débit banque, crédit clients|Débit clients, crédit banque|Débit ventes, crédit banque|Débit banque, crédit ventes
+M|Décaissement|L’entreprise paie un fournisseur par chèque. Quelle écriture ?|+Débit fournisseurs, crédit banque|Débit banque, crédit fournisseurs|Débit achats, crédit banque|Débit fournisseurs, crédit achats
+M|TVA|Comment calcule-t-on en principe la TVA à reverser à l’État pour une période ?|+TVA collectée sur les ventes moins TVA déductible sur les achats|TVA déductible moins TVA collectée|TVA collectée plus TVA déductible|Chiffre d’affaires multiplié par 18 %
+M|TVA|Sur le mois, la TVA collectée est de 900 000 F CFA et la TVA déductible de 650 000 F CFA. Combien reste-t-il à reverser ?|+250 000 F CFA|1 550 000 F CFA|650 000 F CFA|900 000 F CFA
+S|Pièces justificatives|Pourquoi chaque écriture doit-elle s’appuyer sur une pièce justificative ?|+Pour prouver l’opération en cas de contrôle|Pour remplir les classeurs|Parce que le logiciel l’exige seulement|Ce n’est pas nécessaire
+S|Documents|Quel document réduit le montant d’une facture déjà émise ?|+L’avoir|Le devis|Le bon de commande|Le bon de livraison
+M|Livres comptables|Dans quel document les écritures sont-elles enregistrées par ordre chronologique ?|+Le journal|Le grand livre|La balance|Le bilan
+M|Livres comptables|Quel document regroupe, compte par compte, tous les mouvements ?|+Le grand livre|Le journal|Le bilan|Le devis
+M|Balance|À quoi sert la balance des comptes ?|+À vérifier l’équilibre des comptes et préparer les états financiers|À peser les marchandises|À calculer les salaires|À enregistrer les ventes au jour le jour
+M|Rapprochement bancaire|Qu’est-ce que le rapprochement bancaire ?|+Comparer le compte banque de l’entreprise avec le relevé de la banque et expliquer les écarts|Rapprocher les dates des factures|Négocier avec la banque|Transférer de l’argent entre deux comptes
+D|Rapprochement bancaire|Un chèque émis par l’entreprise n’apparaît pas encore sur le relevé bancaire. Dans le rapprochement, c’est :|+un écart normal lié au décalage d’encaissement|une erreur de la banque à corriger tout de suite|une fraude|une charge à enregistrer une seconde fois
+M|Lettrage|Que signifie « lettrer » un compte client ?|+Associer chaque paiement à la facture qu’il règle|Écrire au client|Classer les clients par ordre alphabétique|Annuler une facture
+M|Bilan|Que présente le bilan ?|+Le patrimoine de l’entreprise à une date : ce qu’elle possède et ce qu’elle doit|Les ventes du mois|Le planning des salariés|Les prix de vente
+M|Compte de résultat|Que présente le compte de résultat ?|+Les charges et les produits de l’exercice, et donc le bénéfice ou la perte|Le patrimoine de l’entreprise|La liste des clients|Les soldes bancaires du jour
+S|Résultat|Les produits de l’exercice s’élèvent à 50 millions de F CFA et les charges à 42 millions. Quel est le résultat ?|+Un bénéfice de 8 millions|Une perte de 8 millions|Un bénéfice de 92 millions|Un bénéfice de 42 millions
+M|Amortissement|Un matériel de 1 200 000 F CFA est amorti en linéaire sur 5 ans. Quelle est la dotation annuelle ?|+240 000 F CFA|200 000 F CFA|120 000 F CFA|300 000 F CFA
+M|Amortissement|Pourquoi amortit-on une immobilisation ?|+Pour constater sa perte de valeur liée à l’usage et au temps|Pour la revendre plus cher|Pour augmenter le bénéfice|Pour payer moins de salaires
+D|Principe de prudence|Selon le principe de prudence, une perte probable doit :|+être constatée dès qu’elle est connue|être ignorée tant qu’elle n’est pas certaine|être compensée par un gain futur|être enregistrée l’année suivante
+D|Provision|Un client en difficulté risque de ne pas payer sa facture. Que fait le comptable ?|+Constater une dépréciation de la créance|Supprimer la facture|Ne rien faire jusqu’au paiement|Augmenter le prix de la prochaine facture
+M|Exercice comptable|Quelle est la durée normale d’un exercice comptable ?|+12 mois|6 mois|24 mois|3 mois
+D|Fonds de roulement|Le fonds de roulement est égal à :|+ressources stables moins emplois stables|stocks plus créances|trésorerie moins dettes|chiffre d’affaires moins charges
+M|Caisse|Le solde théorique de la caisse est de 152 500 F CFA, mais le comptage donne 150 000 F CFA. Que faire ?|+Rechercher la cause de l’écart de 2 500 F CFA et le justifier ou le régulariser|Ignorer un si petit écart|Ajouter 2 500 F CFA de sa poche|Modifier le comptage
+M|Charges de personnel|Dans quelle classe enregistre-t-on les salaires versés au personnel ?|+La classe 6 (charges de personnel)|La classe 7|La classe 2|La classe 5
+D|Clôture|Qu’appelle-t-on une charge constatée d’avance ?|+Une charge payée pendant l’exercice mais qui concerne l’exercice suivant|Une charge qui ne sera jamais payée|Une charge payée en espèces|Une charge oubliée
+M|Confidentialité|Un collègue d’un autre service demande l’accès aux comptes pour « simple curiosité ». Que faites-vous ?|+Refuser poliment : les données comptables sont confidentielles|Lui donner l’accès en lecture|Lui envoyer la balance|Lui donner votre mot de passe
+
+@S Mises en situation
+M|Facture sans bon de commande|Vous recevez une facture fournisseur sans bon de commande ni bon de livraison. Que faites-vous ?|+Vérifier auprès du service acheteur que l’achat et la livraison sont réels avant tout paiement|~La comptabiliser et la mettre en attente de paiement|La payer pour éviter les pénalités|La jeter
+D|Demande de paiement urgent|Un message signé du directeur demande un virement urgent et confidentiel vers un nouveau compte. Que faites-vous ?|+Vérifier la demande directement auprès du directeur par un autre moyen avant tout paiement|~Demander une confirmation par retour de courriel|Faire le virement tout de suite|Faire le virement et prévenir après
+M|Écart de balance|La balance n’est pas équilibrée en fin de mois. Que faites-vous ?|+Rechercher l’écriture déséquilibrée en contrôlant les journaux du mois|~Ajouter une écriture d’équilibre sans explication|Attendre la fin de l’année|Signaler que le logiciel est en panne
+M|Retard de clôture|Il vous manque des pièces pour clôturer le mois dans les délais. Que faites-vous ?|+Relancer les services concernés et prévenir votre responsable du risque de retard|~Clôturer sans les pièces|Inventer les montants|Repousser la clôture sans prévenir
+D|Pression sur un chiffre|Votre responsable vous demande de reporter une charge à l’exercice suivant pour améliorer le résultat. Que faites-vous ?|+Expliquer que ce n’est pas conforme aux règles et proposer d’en parler à la direction ou à l’expert-comptable|~Le faire en le notant dans un dossier|Le faire sans discuter|Démissionner sans explication
+S|Erreur de saisie|Vous découvrez une erreur de saisie dans une écriture du mois dernier, déjà clôturé. Que faites-vous ?|+Passer une écriture de correction justifiée et en informer votre responsable|~La corriger directement dans l’écriture d’origine|Ne rien faire|Supprimer l’écriture
+M|Client qui conteste|Un client conteste une facture déjà comptabilisée. Que faites-vous ?|+Vérifier les pièces avec le service commercial et établir un avoir si la contestation est fondée|~Supprimer la facture|Lui demander de payer d’abord|Ignorer la contestation
+M|Note de frais|Un salarié présente une note de frais sans justificatif. Que faites-vous ?|+Demander le justificatif avant tout remboursement, selon la procédure|~Rembourser à moitié|Rembourser sans justificatif|Refuser sans explication
+D|Contrôle fiscal|Un contrôleur des impôts arrive et demande des documents. Que faites-vous ?|+Prévenir la direction et fournir les documents demandés de façon organisée|~Lui demander de revenir plus tard|Cacher certains documents|Refuser de le recevoir
+S|Mot de passe|Un collègue vous demande votre mot de passe du logiciel comptable pendant vos congés. Que faites-vous ?|+Refuser et demander que des accès personnels lui soient créés|~Le lui donner et le changer à votre retour|Le lui donner|Le noter sur votre bureau

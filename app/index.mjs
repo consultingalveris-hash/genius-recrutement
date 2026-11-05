@@ -16,6 +16,9 @@ const SUPERADMIN = (process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
 const QDATA = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/questions.json'), 'utf8'));
 const BANK = new Map(QDATA.bank.map(q => [q.id, q]));
 const COMPS = QDATA.comps;
+const FAMILIES = QDATA.families;
+const famOk = f => FAMILIES.some(x => x.k === f);
+const poolOf = (fam, c) => QDATA.bank.filter(q => q.c === c && (q.c === 'F' || q.c === 'L' ? q.fam === 'commun' : q.fam === fam));
 const DEFAULT_WEIGHTS = { M: 30, S: 35, F: 20, L: 15 };
 
 fs.mkdirSync(path.join(DATA_DIR, 'backups'), { recursive: true });
@@ -40,6 +43,8 @@ CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 `);
 try { db.exec(`ALTER TABLE companies ADD COLUMN logo TEXT`); } catch {}
 try { db.exec(`ALTER TABLE companies ADD COLUMN logo_v INTEGER`); } catch {}
+for (const sql of [`ALTER TABLE tests ADD COLUMN family TEXT NOT NULL DEFAULT 'cc'`, `ALTER TABLE candidates ADD COLUMN perms TEXT`,
+  `ALTER TABLE candidates ADD COLUMN qtime TEXT`, `ALTER TABLE candidates ADD COLUMN cur TEXT`, `ALTER TABLE candidates ADD COLUMN cur_since INTEGER`]) { try { db.exec(sql); } catch {} }
 const q1 = (sql, ...a) => db.prepare(sql).get(...a);
 const qa = (sql, ...a) => db.prepare(sql).all(...a);
 const run = (sql, ...a) => db.prepare(sql).run(...a);
@@ -92,14 +97,14 @@ async function sendMail({ to, subject, html, companyId = null, replyTo }) {
 
 /* ---------- tests et scores ---------- */
 function testRow(t) {
-  return { id: t.id, title: t.title, replyEmail: t.reply_email, perQ: t.per_q, count: t.count, weights: JSON.parse(t.weights),
+  return { id: t.id, family: t.family || 'cc', familyName: (FAMILIES.find(f => f.k === t.family) || FAMILIES[0]).name, title: t.title, replyEmail: t.reply_email, perQ: t.per_q, count: t.count, weights: JSON.parse(t.weights),
     back: !!t.back, deadline: t.deadline || '', createdAt: t.created_at, archived: !!t.archived };
 }
 function expired(t) { if (!t.deadline) return false; const e = new Date(t.deadline + 'T23:59:59'); return !isNaN(e) && now() > e.getTime(); }
 function pickQuestions(t) {
   // Répartit le nombre de questions entre les compétences selon les poids, puis tire au hasard.
   const w = JSON.parse(t.weights), pools = {};
-  for (const c of COMPS) pools[c.k] = QDATA.bank.filter(q => q.c === c.k).sort(() => Math.random() - .5);
+  for (const c of COMPS) pools[c.k] = poolOf(t.family || 'cc', c.k).sort(() => Math.random() - .5);
   const total = COMPS.reduce((s, c) => s + (+w[c.k] || 0), 0) || 1;
   const want = {}; let n = 0;
   for (const c of COMPS) { want[c.k] = Math.min(pools[c.k].length, Math.floor(t.count * (+w[c.k] || 0) / total)); n += want[c.k]; }
@@ -148,6 +153,17 @@ function sweep() {
   run(`DELETE FROM sessions WHERE expires<?`, now()); run(`DELETE FROM resets WHERE expires<?`, now());
 }
 setInterval(sweep, 30_000);
+
+// Effacement automatique (politique de confidentialité) : résultats 12 mois après la fin du test,
+// invitations jamais utilisées 3 mois après l'envoi, historique des e-mails 3 mois.
+const DAY = 864e5;
+function purge() {
+  const a = run(`DELETE FROM candidates WHERE status='termine' AND ended_at < ?`, now() - 365 * DAY).changes;
+  const b = run(`DELETE FROM candidates WHERE status='invite' AND invited_at < ?`, now() - 90 * DAY).changes;
+  const m = run(`DELETE FROM outbox WHERE created_at < ?`, now() - 90 * DAY).changes;
+  if (a || b || m) console.log(`Effacement automatique : ${a} résultat(s), ${b} invitation(s), ${m} e-mail(s).`);
+}
+purge(); setInterval(purge, 6 * 3600_000);
 
 // Sauvegarde quotidienne de la base (14 jours conservés).
 function backup() {
@@ -283,16 +299,18 @@ on('GET', '/api/logo/:id', async (req, res, { params }) => {
 /* tests */
 function readTestBody(body, user) {
   const title = clean(body.title, 160), reply = clean(body.replyEmail || user.email, 200).toLowerCase();
-  const perQ = Math.min(120, Math.max(10, Math.round(+body.perQ || 20))), count = Math.min(QDATA.bank.length, Math.max(5, Math.round(+body.count || 30)));
+  const family = famOk(body.family) ? body.family : 'cc';
+  const perQ = Math.min(120, Math.max(10, Math.round(+body.perQ || 20))), count = Math.min(40, Math.max(5, Math.round(+body.count || 30)));
   const weights = {}; for (const c of COMPS) weights[c.k] = Math.min(100, Math.max(0, Math.round(+(body.weights?.[c.k] ?? DEFAULT_WEIGHTS[c.k]))));
   const deadline = /^\d{4}-\d{2}-\d{2}$/.test(body.deadline || '') ? body.deadline : null;
   if (!title) throw Object.assign(new Error('Indiquez l’intitulé du poste.'), { code: 400 });
   if (!isEmail(reply)) throw Object.assign(new Error('Adresse de réception des résultats invalide.'), { code: 400 });
   if (!Object.values(weights).some(v => v > 0)) throw Object.assign(new Error('Au moins une compétence doit compter.'), { code: 400 });
-  return { title, reply, perQ, count, weights: JSON.stringify(weights), back: body.back === false ? 0 : 1, deadline };
+  return { family, title, reply, perQ, count, weights: JSON.stringify(weights), back: body.back === false ? 0 : 1, deadline };
 }
 const ownTest = (user, id) => q1(`SELECT * FROM tests WHERE id=? AND company_id=?`, +id, user.company_id);
-on('GET', '/api/meta', async (req, res) => send(res, 200, { comps: COMPS.map(c => ({ k: c.k, name: c.name, short: c.short, desc: c.desc, ask: c.ask })), bankSize: QDATA.bank.length, defaults: { perQ: 20, count: 30, weights: DEFAULT_WEIGHTS } }));
+on('GET', '/api/meta', async (req, res) => send(res, 200, { comps: COMPS.map(c => ({ k: c.k, name: c.name, short: c.short, desc: c.desc, ask: c.ask })), bankSize: QDATA.bank.length,
+  families: FAMILIES.map(f => ({ ...f, counts: Object.fromEntries(COMPS.map(c => [c.k, poolOf(f.k, c.k).length])) })), defaults: { perQ: 20, count: 30, weights: DEFAULT_WEIGHTS } }));
 on('GET', '/api/tests', async (req, res, { user }) => {
   const rows = qa(`SELECT t.*, (SELECT COUNT(*) FROM candidates c WHERE c.test_id=t.id) AS n,
     (SELECT COUNT(*) FROM candidates c WHERE c.test_id=t.id AND c.status='termine') AS done FROM tests t WHERE company_id=? ORDER BY archived, created_at DESC`, user.company_id);
@@ -300,8 +318,8 @@ on('GET', '/api/tests', async (req, res, { user }) => {
 }, { auth: true });
 on('POST', '/api/tests', async (req, res, { user, body }) => {
   const b = readTestBody(body, user);
-  const id = run(`INSERT INTO tests(company_id,title,reply_email,per_q,count,weights,back,deadline,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-    user.company_id, b.title, b.reply, b.perQ, b.count, b.weights, b.back, b.deadline, now()).lastInsertRowid;
+  const id = run(`INSERT INTO tests(company_id,family,title,reply_email,per_q,count,weights,back,deadline,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+    user.company_id, b.family, b.title, b.reply, b.perQ, b.count, b.weights, b.back, b.deadline, now()).lastInsertRowid;
   send(res, 200, { id });
 }, { auth: true });
 on('GET', '/api/tests/:id', async (req, res, { user, params }) => {
@@ -314,9 +332,9 @@ on('PUT', '/api/tests/:id', async (req, res, { user, params, body }) => {
   if (body.archived != null && Object.keys(body).length === 1) { run(`UPDATE tests SET archived=? WHERE id=?`, body.archived ? 1 : 0, t.id); return send(res, 200, { ok: true }); }
   const started = q1(`SELECT COUNT(*) AS n FROM candidates WHERE test_id=? AND status!='invite'`, t.id).n;
   const b = readTestBody(body, user);
-  if (started && (b.count !== t.count || b.perQ !== t.per_q || b.weights !== t.weights))
-    return fail(res, 409, 'Des candidats ont déjà commencé ce test : le nombre de questions, le temps et les poids ne peuvent plus changer. Créez un nouveau test si besoin.');
-  run(`UPDATE tests SET title=?,reply_email=?,per_q=?,count=?,weights=?,back=?,deadline=? WHERE id=?`, b.title, b.reply, b.perQ, b.count, b.weights, b.back, b.deadline, t.id);
+  if (started && (b.count !== t.count || b.perQ !== t.per_q || b.weights !== t.weights || b.family !== (t.family || 'cc')))
+    return fail(res, 409, 'Des candidats ont déjà commencé ce test : le métier, le nombre de questions, le temps et les poids ne peuvent plus changer. Créez un nouveau test si besoin.');
+  run(`UPDATE tests SET family=?,title=?,reply_email=?,per_q=?,count=?,weights=?,back=?,deadline=? WHERE id=?`, b.family, b.title, b.reply, b.perQ, b.count, b.weights, b.back, b.deadline, t.id);
   send(res, 200, { ok: true });
 }, { auth: true });
 on('DELETE', '/api/tests/:id', async (req, res, { user, params }) => {
@@ -403,14 +421,22 @@ on('PUT', '/api/admin/mail', async (req, res, { user, body }) => {
 
 /* passage du test (candidat, sans compte) */
 const candByToken = tok => q1(`SELECT * FROM candidates WHERE token=?`, String(tok));
+function permsOf(c) { return c.perms ? JSON.parse(c.perms) : {}; }
+function spentOf(c) {
+  const q = c.qtime ? JSON.parse(c.qtime) : {};
+  if (c.cur && c.cur_since) q[c.cur] = (q[c.cur] || 0) + (now() - c.cur_since) / 1000;
+  return q;
+}
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 function publicState(c, t) {
   const co = q1(`SELECT name FROM companies WHERE id=?`, t.company_id);
   const base = { company: co?.name || '', logo: logoUrl(t.company_id), title: t.title, name: c.name, count: t.count, perQ: t.per_q, back: !!t.back, status: c.status,
     expired: c.status === 'invite' && expired(t), deadline: t.deadline || '' };
   if (c.status !== 'en_cours') return base;
-  const order = JSON.parse(c.qorder), answers = JSON.parse(c.answers || '{}');
-  return { ...base, elapsed: Math.round((now() - c.started_at) / 1000), limit: limitSecs(t), answers,
-    questions: order.map(id => { const q = BANK.get(id); return { id, skill: q.skill, text: q.t, options: q.o.map(o => o[0]) }; }) };
+  const order = JSON.parse(c.qorder), answers = JSON.parse(c.answers || '{}'), perms = permsOf(c), spent = spentOf(c);
+  const shown = {}; for (const [id, a] of Object.entries(answers)) shown[id] = perms[id] ? perms[id].indexOf(a) : a;
+  return { ...base, elapsed: Math.round((now() - c.started_at) / 1000), limit: limitSecs(t), answers: shown, spent, current: c.cur || null,
+    questions: order.map(id => { const q = BANK.get(id), p = perms[id] || q.o.map((_, i) => i); return { id, skill: q.skill, text: q.t, options: p.map(i => q.o[i][0]) }; }) };
 }
 function candContext(params) {
   const c = candByToken(params.token); if (!c) return null;
@@ -427,7 +453,10 @@ on('POST', '/api/c/:token/start', async (req, res, { params, body }) => {
   if (c.status === 'invite') {
     if (expired(t)) return fail(res, 410, 'La date limite de ce test est passée.');
     if (!body.consent) return fail(res, 400, 'Merci d’accepter les conditions avant de commencer.');
-    run(`UPDATE candidates SET status='en_cours', started_at=?, qorder=?, answers='{}' WHERE id=? AND status='invite'`, now(), JSON.stringify(pickQuestions(t)), c.id);
+    const order = pickQuestions(t), perms = {};
+    for (const id of order) perms[id] = shuffle(BANK.get(id).o.map((_, i) => i));
+    run(`UPDATE candidates SET status='en_cours', started_at=?, qorder=?, answers='{}', perms=?, qtime='{}', cur=?, cur_since=? WHERE id=? AND status='invite'`,
+      now(), JSON.stringify(order), JSON.stringify(perms), order[0], now(), c.id);
   }
   const y = candContext(params); send(res, 200, publicState(y.c, y.t));
 });
@@ -436,10 +465,22 @@ on('POST', '/api/c/:token/answer', async (req, res, { params, body }) => {
   const { c, t } = x; if (c.status !== 'en_cours') return fail(res, 409, 'Le test est terminé.');
   const order = JSON.parse(c.qorder), answers = JSON.parse(c.answers || '{}');
   if (!order.includes(body.id)) return fail(res, 400, 'Question inconnue.');
-  const q = BANK.get(body.id), a = body.answer == null ? null : Math.round(+body.answer);
-  if (a != null && !(a >= 0 && a < q.o.length)) return fail(res, 400, 'Réponse invalide.');
+  const q = BANK.get(body.id), k = body.answer == null ? null : Math.round(+body.answer);
+  if (k != null && !(k >= 0 && k < q.o.length)) return fail(res, 400, 'Réponse invalide.');
+  const perm = permsOf(c)[body.id], a = k == null ? null : (perm ? perm[k] : k);
+  if ((spentOf(c)[body.id] || 0) > t.per_q + 3) return fail(res, 409, 'Le temps de cette question est écoulé.');
   if (a == null) delete answers[body.id]; else answers[body.id] = a;
   run(`UPDATE candidates SET answers=? WHERE id=?`, JSON.stringify(answers), c.id); send(res, 200, { ok: true });
+});
+on('POST', '/api/c/:token/view', async (req, res, { params, body }) => {
+  // Le candidat affiche une question : on clôt le chronomètre de la précédente et on lance celui-ci (contrôle côté serveur).
+  const x = candContext(params); if (!x) return fail(res, 404, 'Ce lien de test n’existe pas.');
+  const { c } = x; if (c.status !== 'en_cours') return fail(res, 409, 'Le test est terminé.');
+  if (!JSON.parse(c.qorder).includes(body.id)) return fail(res, 400, 'Question inconnue.');
+  const q = c.qtime ? JSON.parse(c.qtime) : {};
+  if (c.cur && c.cur_since) q[c.cur] = (q[c.cur] || 0) + (now() - c.cur_since) / 1000;
+  run(`UPDATE candidates SET qtime=?, cur=?, cur_since=? WHERE id=?`, JSON.stringify(q), body.id, now(), c.id);
+  send(res, 200, { spent: q[body.id] || 0 });
 });
 on('POST', '/api/c/:token/exit', async (req, res, { params }) => {
   const x = candContext(params); if (x && x.c.status === 'en_cours') run(`UPDATE candidates SET exits=exits+1 WHERE id=?`, x.c.id); send(res, 200, { ok: true });
@@ -470,6 +511,8 @@ const server = http.createServer(async (req, res) => {
     if (p === '/' || p === '/index.html') return serveFile(res, path.join(PUB, 'index.html'));
     if (p === '/app' || p === '/app/') return serveFile(res, path.join(PUB, 'app.html'));
     if (/^\/t\/[\w-]+$/.test(p)) return serveFile(res, path.join(PUB, 'test.html'), { 'X-Robots-Tag': 'noindex' });
+    if (p === '/confidentialite') return serveFile(res, path.join(PUB, 'confidentialite.html'));
+    if (p === '/mentions-legales') return serveFile(res, path.join(PUB, 'mentions-legales.html'));
     if (p === '/essai') { res.writeHead(301, { Location: '/essai/' }); return res.end(); }
     const f = path.normalize(path.join(PUB, p.endsWith('/') ? p + 'index.html' : p));
     if (!f.startsWith(PUB + path.sep)) return send(res, 404, 'Page introuvable');

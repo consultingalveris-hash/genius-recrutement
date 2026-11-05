@@ -43,7 +43,7 @@ function welcome(){
   '<li><span><b>Restez sur cette page</b> jusqu’à la fin : chaque sortie (autre onglet, autre application) est signalée au recruteur.</span></li>'+
   '<li><span>Une fois commencé, le test se fait d’une traite. Si la connexion coupe, rouvrez le même lien pour reprendre.</span></li></ul>'+
   (S.deadline?'<p class="small muted">À passer avant le '+new Date(S.deadline+'T12:00').toLocaleDateString('fr-FR')+'.</p>':'')+
-  '<label class="check"><input type="checkbox" id="consent"><span>J’accepte que mes réponses et mon résultat soient transmis à '+esc(S.company)+' pour l’examen de ma candidature.</span></label>'+
+  '<label class="check"><input type="checkbox" id="consent"><span>J’accepte que mes réponses et mon résultat soient transmis à '+esc(S.company)+' pour l’examen de ma candidature. Ils sont effacés au plus tard 12 mois après le test (<a href="/confidentialite.html" target="_blank" rel="noopener">confidentialité</a>).</span></label>'+
   '<p class="err" id="err" hidden></p><button class="btn primary block" id="go" disabled>Commencer le test</button></div>';
   var c=document.getElementById('consent'),go=document.getElementById('go');
   c.addEventListener('change',function(){go.disabled=!c.checked;});
@@ -57,6 +57,9 @@ function left(q){return Math.max(0,S.perQ-(L.spent[q.id]||0));}
 function totalLeft(){return S.limit-S.elapsed-Math.round((Date.now()-S.loadedAt)/1000);}
 function runTest(){
   S.loadedAt=Date.now();load();
+  // Le serveur fait foi pour le temps déjà passé sur chaque question.
+  if(S.spent)Object.keys(S.spent).forEach(function(id){L.spent[id]=Math.max(L.spent[id]||0,S.spent[id]);});
+  if(S.current){var ci=S.questions.findIndex(function(q){return q.id===S.current;});if(ci>=0&&left(S.questions[ci])>0)L.i=ci;}
   if(L.i>=S.questions.length)L.i=S.questions.length-1;
   // On reprend à la première question où il reste du temps.
   while(L.i<S.questions.length-1&&left(S.questions[L.i])<=0)L.i++;
@@ -72,8 +75,10 @@ function beat(){
   var tm=document.getElementById('tm');if(tm){var s=Math.ceil(left(q));tm.textContent=s+' s';tm.className='timer'+(s<=5?' low':'');}
   if(Math.random()<.1)save();
 }
+var lastView=null;
 function draw(){
   var q=S.questions[L.i],n=S.questions.length,ans=S.answers[q.id];
+  if(lastView!==q.id){lastView=q.id;api('POST','/api/c/'+TOKEN+'/view',{id:q.id}).then(function(r){if(r.spent>(L.spent[q.id]||0))L.spent[q.id]=r.spent;}).catch(function(){});}
   var prev=L.i>0?S.questions[L.i-1]:null,canBack=S.back&&prev&&left(prev)>0;
   app.innerHTML=head()+'<div class="card">'+
   '<div class="row between small muted"><span>Question '+(L.i+1)+' sur '+n+'</span><span class="timer" id="tm" aria-live="off">'+Math.ceil(left(q))+' s</span></div>'+
@@ -85,7 +90,7 @@ function draw(){
   '<p class="small muted" style="text-align:center;margin-top:14px">Temps total restant : environ '+Math.max(1,Math.ceil(totalLeft()/60))+' min</p>';
   Array.prototype.forEach.call(document.querySelectorAll('.opt'),function(b){b.addEventListener('click',function(){
     var k=+b.dataset.k;S.answers[q.id]=k;draw();
-    api('POST','/api/c/'+TOKEN+'/answer',{id:q.id,answer:k}).catch(function(e){toast(e.message.indexOf('terminé')>=0?e.message:'Connexion instable : votre réponse sera renvoyée.');setTimeout(function(){api('POST','/api/c/'+TOKEN+'/answer',{id:q.id,answer:S.answers[q.id]}).catch(function(){});},2000);});
+    api('POST','/api/c/'+TOKEN+'/answer',{id:q.id,answer:k}).catch(function(e){if(/écoulé|terminé/.test(e.message)){delete S.answers[q.id];toast(e.message);draw();return;}toast('Connexion instable : votre réponse sera renvoyée.');setTimeout(function(){api('POST','/api/c/'+TOKEN+'/answer',{id:q.id,answer:S.answers[q.id]}).catch(function(){});},2000);});
   });});
   document.getElementById('prev').addEventListener('click',function(){if(canBack){L.i--;save();draw();}});
   document.getElementById('next').addEventListener('click',function(){
