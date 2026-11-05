@@ -7,6 +7,16 @@ DOMAINE=recrutement.alveris-consulting.com
 SITE_NOM=genius-recrutement-site
 DOSSIER="$(cd "$(dirname "$0")" && pwd)"
 
+# Le serveur n'avait plus de serveur DNS : on en fixe deux, de façon durable.
+if [ ! -f /etc/systemd/resolved.conf.d/dns-public.conf ]; then
+  mkdir -p /etc/systemd/resolved.conf.d
+  printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\nFallbackDNS=9.9.9.9\n' > /etc/systemd/resolved.conf.d/dns-public.conf
+  systemctl restart systemd-resolved
+  sleep 2
+  echo "DNS du serveur fixés (1.1.1.1, 8.8.8.8)."
+fi
+getent hosts acme-v02.api.letsencrypt.org >/dev/null || { echo "ERREUR : le serveur ne trouve toujours pas les adresses internet."; exit 1; }
+
 C=$(docker ps --format '{{.Names}}' | grep -E 'caddy' | head -n1 || true)
 [ -n "$C" ] || { echo "ERREUR : conteneur Caddy du CRM introuvable."; exit 1; }
 echo "Caddy du CRM : $C"
