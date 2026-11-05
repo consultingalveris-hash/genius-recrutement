@@ -45,7 +45,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal()
 /* ---------- chrome ---------- */
 function chrome(active){
   var top=$('#top');top.hidden=!ME;if(!ME)return;
-  $('#who').textContent=ME.company;
+  $('#who').innerHTML=(ME.logo?'<img src="'+esc(ME.logo)+'" alt="Logo '+esc(ME.company)+'" style="height:36px;max-width:150px;object-fit:contain;display:block">':'')+'<span>'+esc(ME.company)+'</span>';$('#who').style.cssText='display:flex;align-items:center;gap:10px';
   var items=[['#/tests','Mes tests','tests'],['#/mails','E-mails','mails'],['#/account','Mon compte','account']];
   $('#nav').innerHTML=items.map(function(i){return '<a href="'+i[0]+'" class="'+(active===i[2]?'on':'')+'">'+i[1]+'</a>';}).join('');
 }
@@ -91,9 +91,9 @@ V.reset=function(tok){
 };
 
 /* ---------- liste des tests ---------- */
-V.tests=function(){
+V.tests=function(){var rt=ROUTE;
   chrome('tests');app.innerHTML='<div class="wrap"><p class="muted">Chargement…</p></div>';
-  api('GET','/api/tests').then(function(r){
+  api('GET','/api/tests').then(function(r){if(rt!==ROUTE)return;
     var act=r.tests.filter(function(t){return !t.archived;}),arc=r.tests.filter(function(t){return t.archived;});
     function card(t){return '<a class="card col" href="#/tests/'+t.id+'" style="text-decoration:none;color:inherit">'+
       '<div class="row between"><h3>'+esc(t.title)+'</h3>'+(t.expired?'<span class="pill warn">Date passée</span>':t.archived?'<span class="pill neutral">Archivé</span>':'<span class="pill ok">Ouvert</span>')+'</div>'+
@@ -106,9 +106,9 @@ V.tests=function(){
 };
 
 /* ---------- création / modification ---------- */
-V.testForm=function(id){
+V.testForm=function(id){var rt=ROUTE;
   chrome('tests');app.innerHTML='<div class="wrap"><p class="muted">Chargement…</p></div>';
-  Promise.all([META?Promise.resolve(META):api('GET','/api/meta'),id?api('GET','/api/tests/'+id):Promise.resolve(null)]).then(function(x){
+  Promise.all([META?Promise.resolve(META):api('GET','/api/meta'),id?api('GET','/api/tests/'+id):Promise.resolve(null)]).then(function(x){if(rt!==ROUTE)return;
     META=x[0];var t=x[1]?x[1].test:{title:'',replyEmail:ME.email,perQ:META.defaults.perQ,count:META.defaults.count,weights:META.defaults.weights,back:true,deadline:''};
     var sel=function(name,vals,cur,lab){return '<select class="in" name="'+name+'">'+vals.map(function(v){return '<option value="'+v+'"'+(+v===+cur?' selected':'')+'>'+lab(v)+'</option>';}).join('')+'</select>';};
     app.innerHTML='<div class="wrap" style="max-width:760px"><a href="'+(id?'#/tests/'+id:'#/tests')+'" class="small">← Retour</a>'+
@@ -134,9 +134,9 @@ V.testForm=function(id){
 
 /* ---------- un test : candidats et résultats ---------- */
 var filt={q:'',st:''};
-V.test=function(id){
+V.test=function(id){var rt=ROUTE;
   chrome('tests');
-  Promise.all([META?Promise.resolve(META):api('GET','/api/meta'),api('GET','/api/tests/'+id)]).then(function(x){
+  Promise.all([META?Promise.resolve(META):api('GET','/api/meta'),api('GET','/api/tests/'+id)]).then(function(x){if(rt!==ROUTE)return;
     META=x[0];var t=x[1].test,cands=x[1].candidates;
     var done=cands.filter(function(c){return c.status==='termine';}),avg=done.length?Math.round(done.reduce(function(s,c){return s+c.global;},0)/done.length):null;
     var rank=0;cands.forEach(function(c){c.rank=c.status==='termine'?++rank:null;});
@@ -146,7 +146,7 @@ V.test=function(id){
       if(!list.length)return '<tr><td colspan="'+(6+META.comps.length)+'" class="empty">'+(cands.length?'Aucun candidat ne correspond à ce filtre.':'Aucun candidat invité pour l’instant. Cliquez sur « Inviter des candidats ».')+'</td></tr>';
       return list.map(function(c){
         var alerts=[];if(c.timeout)alerts.push('Temps dépassé');if(c.exits)alerts.push(c.exits+' sortie'+(c.exits>1?'s':'')+' de page');
-        return '<tr><td class="num">'+(c.rank||'')+'</td><td><b>'+esc(c.name)+'</b><div class="small muted">'+esc(c.email)+'</div></td><td>'+pill(c.status)+'</td>'+
+        return '<tr><td class="num">'+(c.rank||'')+'</td><td><div class="row" style="gap:10px;flex-wrap:nowrap">'+avatar(c.name)+'<div><b>'+esc(c.name)+'</b><div class="small muted">'+esc(c.email)+'</div></div></div></td><td>'+pill(c.status)+'</td>'+
         '<td class="num">'+(c.global!=null?'<b>'+c.global+' %</b>':'')+'</td>'+
         META.comps.map(function(k){var v=c.scores&&c.scores[k.k];return '<td class="num">'+(v!=null?v+' %':'')+'</td>';}).join('')+
         '<td class="small">'+(c.secs!=null?fmtSecs(c.secs):'')+(alerts.length?'<div><span class="pill warn">'+alerts.join(' · ')+'</span></div>':'')+'</td>'+
@@ -183,6 +183,9 @@ V.test=function(id){
     });
   }).catch(handle);
 };
+var AV=['#0B6E66','#1D4F91','#8A4B00','#6B3FA0','#A1281C','#11683A','#33404F'];
+function avatar(name){var p=String(name||'?').trim().split(/\s+/),ini=((p[0]||'?')[0]+(p.length>1?p[p.length-1][0]:'')).toUpperCase(),h=0;for(var i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;
+  return '<span aria-hidden="true" style="flex:none;width:34px;height:34px;border-radius:50%;background:'+AV[h%AV.length]+';color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px">'+esc(ini)+'</span>';}
 function copyText(s){
   try{navigator.clipboard.writeText(s).then(function(){toast('Lien copié. Collez-le dans un message au candidat.');},function(){prompt('Copiez ce lien :',s);});}catch(e){prompt('Copiez ce lien :',s);}
 }
@@ -227,9 +230,9 @@ function detailModal(cid){
 }
 
 /* ---------- e-mails ---------- */
-V.mails=function(){
+V.mails=function(){var rt=ROUTE;
   chrome('mails');
-  api('GET','/api/outbox').then(function(r){
+  api('GET','/api/outbox').then(function(r){if(rt!==ROUTE)return;
     var lab={envoye:['Envoyé','ok'],non_envoye:['Non envoyé','warn'],echec:['Échec','warn'],en_cours:['En cours','info']};
     app.innerHTML='<div class="wrap col"><div><h1>E-mails</h1><p class="muted" style="margin-top:4px">Les 100 derniers messages envoyés par la plateforme au nom de votre entreprise.</p></div>'+
     (r.mailConfigured?'':'<p class="note warn"><b>Les e-mails ne sont pas encore activés sur la plateforme.</b> Les messages ci-dessous ont été préparés mais ne sont pas partis. En attendant, copiez le lien de chaque candidat depuis la page du test et envoyez-le vous-même.</p>')+
@@ -247,11 +250,28 @@ V.account=function(){
   chrome('account');
   app.innerHTML='<div class="wrap col" style="max-width:760px"><h1>Mon compte</h1>'+
   '<div class="card col"><h2>Mes informations</h2><p>'+esc(ME.name)+'<br><span class="muted">'+esc(ME.email)+' · '+esc(ME.company)+'</span></p></div>'+
+  '<div class="card col" id="logobox"><div><h2>Logo de l’entreprise</h2><p class="muted" style="margin-top:4px">Il s’affiche en haut de votre espace, sur la page du test vue par le candidat et dans les e-mails d’invitation. Format PNG ou JPEG ; il est réduit automatiquement.</p></div>'+
+  '<div class="row"><div id="logoprev" style="width:180px;height:80px;border:1px dashed var(--line);border-radius:10px;display:grid;place-items:center;background:#fff;overflow:hidden">'+(ME.logo?'<img src="'+esc(ME.logo)+'" alt="Logo actuel" style="max-width:160px;max-height:64px">':'<span class="small" style="color:#4A5565">Aucun logo</span>')+'</div>'+
+  '<div class="col" style="gap:8px"><label class="btn primary" style="cursor:pointer">Choisir une image<input type="file" id="logofile" accept="image/png,image/jpeg,image/webp" hidden></label>'+(ME.logo?'<button class="link" id="logodel" style="color:var(--danger)">Retirer le logo</button>':'')+'</div></div></div>'+
   '<form class="card form" id="fp"><h2>Changer de mot de passe</h2><label class="field">Mot de passe actuel<input class="in" type="password" name="current" required autocomplete="current-password"></label>'+
   '<label class="field">Nouveau mot de passe <span class="hint">8 caractères au moins</span><input class="in" type="password" name="password" minlength="8" required autocomplete="new-password"></label><p class="err" hidden></p><div><button class="btn primary" type="submit">Changer</button></div></form>'+
   (ME.superadmin?'<div id="mailcfg" class="card"><p class="muted">Chargement des réglages e-mail…</p></div>':'')+'</div>';
   bindForm('#fp',function(d,f){return api('POST','/api/password',d).then(function(){f.reset();toast('Mot de passe changé.');});});
-  if(ME.superadmin)api('GET','/api/admin/mail').then(function(m){
+  $('#logofile').addEventListener('change',function(){
+    var f=this.files[0];if(!f)return;
+    var img=new Image(),url=URL.createObjectURL(f);
+    img.onload=function(){
+      var max=480,sc=Math.min(1,max/img.width,240/img.height),cv=document.createElement('canvas');
+      cv.width=Math.max(1,Math.round(img.width*sc));cv.height=Math.max(1,Math.round(img.height*sc));
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);
+      var data=cv.toDataURL('image/png');if(data.length>400000)data=cv.toDataURL('image/jpeg',.85);
+      api('PUT','/api/company/logo',{dataUrl:data}).then(function(r){ME.logo=r.logo;toast('Logo enregistré.');V.account();}).catch(handle);
+    };
+    img.onerror=function(){toast('Cette image ne peut pas être lue. Essayez un fichier PNG ou JPEG.');};
+    img.src=url;
+  });
+  if($('#logodel'))$('#logodel').addEventListener('click',function(){api('DELETE','/api/company/logo').then(function(){ME.logo=null;toast('Logo retiré.');V.account();}).catch(handle);});
+  var rt=ROUTE;if(ME.superadmin)api('GET','/api/admin/mail').then(function(m){if(rt!==ROUTE)return;
     var box=$('#mailcfg');
     box.innerHTML='<form class="form" id="fm"><div><h2>Envoi des e-mails de la plateforme</h2><p class="muted" style="margin-top:4px">Réservé au propriétaire de Genius Recrutement. Ces réglages viennent du service d’envoi (par exemple Brevo, rubrique « SMTP &amp; API »).</p></div>'+
     (m.hasPass?'<p class="note ok">Un service d’envoi est enregistré.</p>':'<p class="note warn">Aucun service d’envoi : les e-mails ne partent pas encore.</p>')+
@@ -266,7 +286,8 @@ V.account=function(){
 
 /* ---------- routeur ---------- */
 function handle(e){if(e.status===401){ME=null;location.hash='#/login';return;}if(e.status===404){app.innerHTML='<div class="wrap"><div class="card empty"><h2 style="color:var(--fg)">Page introuvable</h2><p style="margin:8px 0 16px">'+esc(e.message)+'</p><a class="btn" href="#/tests">Retour à mes tests</a></div></div>';return;}toast(e.message);}
-function route(){
+var ROUTE=0;
+function route(){ROUTE++;
   var h=location.hash.replace(/^#\/?/,'')||'tests',p=h.split('/');
   var pub={login:1,signup:1,forgot:1,reset:1};
   if(!ME&&!pub[p[0]]){location.hash='#/login';return;}

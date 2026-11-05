@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS outbox(id INTEGER PRIMARY KEY, company_id INTEGER, re
   body TEXT NOT NULL, status TEXT NOT NULL, error TEXT, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 `);
+try { db.exec(`ALTER TABLE companies ADD COLUMN logo TEXT`); } catch {}
+try { db.exec(`ALTER TABLE companies ADD COLUMN logo_v INTEGER`); } catch {}
 const q1 = (sql, ...a) => db.prepare(sql).get(...a);
 const qa = (sql, ...a) => db.prepare(sql).all(...a);
 const run = (sql, ...a) => db.prepare(sql).run(...a);
@@ -66,9 +68,11 @@ function getTransport() {
   }
   return { t: transport, from: m.from };
 }
-function mailLayout(title, inner) {
+const logoUrl = companyId => { const r = q1(`SELECT logo_v FROM companies WHERE id=? AND logo IS NOT NULL`, companyId); return r ? `${BASE_URL}/api/logo/${companyId}?v=${r.logo_v}` : null; };
+function mailLayout(title, inner, companyId = null) {
+  const lg = companyId ? logoUrl(companyId) : null;
   return `<div style="font-family:Arial,Helvetica,sans-serif;background:#F4F6F8;padding:24px"><div style="max-width:560px;margin:auto;background:#fff;border:1px solid #DDE2E8;border-radius:12px;padding:28px;color:#0F1B2D;font-size:15px;line-height:1.5">
-<div style="font-weight:700;color:#0B6E66;margin-bottom:16px">Genius Recrutement</div><h1 style="font-size:20px;margin:0 0 12px">${esc(title)}</h1>${inner}
+${lg ? `<img src="${esc(lg)}" alt="" style="max-height:56px;max-width:220px;display:block;margin-bottom:18px">` : '<div style="font-weight:700;color:#0B6E66;margin-bottom:16px">Genius Recrutement</div>'}<h1 style="font-size:20px;margin:0 0 12px">${esc(title)}</h1>${inner}
 <p style="color:#4A5565;font-size:12px;margin-top:28px">Message envoyé automatiquement par Genius Recrutement.</p></div></div>`;
 }
 const button = (url, label) => `<p style="margin:22px 0"><a href="${esc(url)}" style="background:#0B6E66;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;display:inline-block">${esc(label)}</a></p><p style="font-size:12px;color:#4A5565">Si le bouton ne marche pas, copiez ce lien : ${esc(url)}</p>`;
@@ -187,7 +191,7 @@ const attempts = new Map();
 function tooMany(key) {
   const t = now(), a = (attempts.get(key) || []).filter(x => t - x < 15 * 60_000); a.push(t); attempts.set(key, a); return a.length > 10;
 }
-const userOut = u => ({ name: u.name, email: u.email, company: u.company, superadmin: !!SUPERADMIN && u.email === SUPERADMIN });
+const userOut = u => ({ name: u.name, email: u.email, company: u.company, logo: logoUrl(u.company_id), superadmin: !!SUPERADMIN && u.email === SUPERADMIN });
 
 function candidateOut(c) {
   return { id: c.id, name: c.name, email: c.email, status: c.status, invitedAt: c.invited_at, startedAt: c.started_at, endedAt: c.ended_at,
@@ -199,7 +203,7 @@ function invitationMail(t, c, companyName) {
   return mailLayout(`${companyName} vous invite à passer un test`, `<p>Bonjour ${esc(c.name)},</p>
 <p>Dans le cadre de votre candidature au poste <b>${esc(t.title)}</b>, ${esc(companyName)} vous propose un test en ligne.</p>
 <p>${t.count} questions, ${t.per_q} secondes par question, soit environ ${mins} minutes. Prévoyez un moment au calme : une fois commencé, le test se fait d'une traite.${t.deadline ? `<br>À passer avant le <b>${new Date(t.deadline + 'T12:00:00').toLocaleDateString('fr-FR')}</b>.` : ''}</p>
-${button(`${BASE_URL}/t/${c.token}`, 'Commencer le test')}`);
+${button(`${BASE_URL}/t/${c.token}`, 'Commencer le test')}`, t.company_id);
 }
 
 const routes = [];
@@ -257,6 +261,24 @@ on('POST', '/api/password', async (req, res, { user, body }) => {
   if (String(body.password || '').length < 8) return fail(res, 400, 'Le nouveau mot de passe doit faire au moins 8 caractères.');
   run(`UPDATE users SET pass=? WHERE id=?`, hashPass(String(body.password)), user.id); send(res, 200, { ok: true });
 }, { auth: true });
+
+/* logo de l'entreprise */
+on('PUT', '/api/company/logo', async (req, res, { user, body }) => {
+  const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(body.dataUrl || ''));
+  if (!m) return fail(res, 400, 'Format accepté : PNG, JPEG ou WebP.');
+  if (m[2].length > 400_000) return fail(res, 413, 'Image trop lourde (300 Ko au plus).');
+  run(`UPDATE companies SET logo=?, logo_v=? WHERE id=?`, body.dataUrl, now(), user.company_id);
+  send(res, 200, { logo: logoUrl(user.company_id) });
+}, { auth: true });
+on('DELETE', '/api/company/logo', async (req, res, { user }) => {
+  run(`UPDATE companies SET logo=NULL, logo_v=NULL WHERE id=?`, user.company_id); send(res, 200, { ok: true });
+}, { auth: true });
+on('GET', '/api/logo/:id', async (req, res, { params }) => {
+  const r = q1(`SELECT logo FROM companies WHERE id=?`, +params.id);
+  const m = r && r.logo && /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(r.logo);
+  if (!m) return send(res, 404, 'Pas de logo');
+  res.writeHead(200, { 'Content-Type': m[1], 'Cache-Control': 'public, max-age=31536000, immutable' }); res.end(Buffer.from(m[2], 'base64'));
+});
 
 /* tests */
 function readTestBody(body, user) {
@@ -383,7 +405,7 @@ on('PUT', '/api/admin/mail', async (req, res, { user, body }) => {
 const candByToken = tok => q1(`SELECT * FROM candidates WHERE token=?`, String(tok));
 function publicState(c, t) {
   const co = q1(`SELECT name FROM companies WHERE id=?`, t.company_id);
-  const base = { company: co?.name || '', title: t.title, name: c.name, count: t.count, perQ: t.per_q, back: !!t.back, status: c.status,
+  const base = { company: co?.name || '', logo: logoUrl(t.company_id), title: t.title, name: c.name, count: t.count, perQ: t.per_q, back: !!t.back, status: c.status,
     expired: c.status === 'invite' && expired(t), deadline: t.deadline || '' };
   if (c.status !== 'en_cours') return base;
   const order = JSON.parse(c.qorder), answers = JSON.parse(c.answers || '{}');
