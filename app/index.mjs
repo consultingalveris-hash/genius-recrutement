@@ -7,6 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import nodemailer from 'nodemailer';
+import zlib from 'node:zlib';
 
 const ROOT = path.dirname(new URL(import.meta.url).pathname);
 const PORT = +process.env.PORT || 3000;
@@ -81,13 +82,13 @@ ${lg ? `<img src="${esc(lg)}" alt="" style="max-height:56px;max-width:220px;disp
 <p style="color:#4A5565;font-size:12px;margin-top:28px">Message envoyé automatiquement par Genius Recrutement.</p></div></div>`;
 }
 const button = (url, label) => `<p style="margin:22px 0"><a href="${esc(url)}" style="background:#0B6E66;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;display:inline-block">${esc(label)}</a></p><p style="font-size:12px;color:#4A5565">Si le bouton ne marche pas, copiez ce lien : ${esc(url)}</p>`;
-async function sendMail({ to, subject, html, companyId = null, replyTo }) {
+async function sendMail({ to, subject, html, companyId = null, replyTo, attachments }) {
   const tr = getTransport();
   const id = run(`INSERT INTO outbox(company_id,recipient,subject,body,status,created_at) VALUES(?,?,?,?,?,?)`,
     companyId, to, subject, html, tr ? 'en_cours' : 'non_envoye', now()).lastInsertRowid;
   if (!tr) return { sent: false, test: true };
   try {
-    await tr.t.sendMail({ from: tr.from, to, subject, html, replyTo });
+    await tr.t.sendMail({ from: tr.from, to, subject, html, replyTo, attachments });
     run(`UPDATE outbox SET status='envoye' WHERE id=?`, id); return { sent: true };
   } catch (e) {
     run(`UPDATE outbox SET status='echec', error=? WHERE id=?`, String(e.message || e).slice(0, 500), id);
@@ -172,6 +173,19 @@ function backup() {
   for (const x of fs.readdirSync(path.join(DATA_DIR, 'backups')).sort().slice(0, -14)) fs.rmSync(path.join(DATA_DIR, 'backups', x));
 }
 backup(); setInterval(backup, 3600_000);
+
+// Copie hors du serveur : chaque semaine, la dernière sauvegarde part (compressée) dans la boîte du propriétaire.
+async function offsiteBackup() {
+  if (!SUPERADMIN || !getTransport()) return;
+  const last = +(q1(`SELECT v FROM settings WHERE k='offsite'`)?.v || 0);
+  if (now() - last < 7 * 864e5) return;
+  const dir = path.join(DATA_DIR, 'backups'), f = fs.readdirSync(dir).sort().pop(); if (!f) return;
+  const gz = zlib.gzipSync(fs.readFileSync(path.join(dir, f)));
+  const r = await sendMail({ to: SUPERADMIN, subject: `Sauvegarde Genius Recrutement du ${f.slice(7, 17)}`, attachments: [{ filename: f + '.gz', content: gz }],
+    html: mailLayout('Sauvegarde hebdomadaire', `<p>Vous trouverez en pièce jointe la copie de sauvegarde de Genius Recrutement (${Math.ceil(gz.length / 1024)} Ko).</p><p>Gardez ce message : en cas de panne du serveur, cette copie permet de tout restaurer. Elle contient les données des recruteurs et des candidats : ne la transférez à personne.</p>`) });
+  if (r.sent) run(`INSERT INTO settings(k,v) VALUES('offsite',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`, String(now()));
+}
+setTimeout(offsiteBackup, 60_000); setInterval(offsiteBackup, 6 * 3600_000);
 
 /* ---------- HTTP ---------- */
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
@@ -416,6 +430,7 @@ on('PUT', '/api/admin/mail', async (req, res, { user, body }) => {
   const tr = getTransport(); if (!tr) return send(res, 200, { ok: true, verified: false, message: 'Réglages enregistrés, mais incomplets : les e-mails ne partent pas encore.' });
   try { await tr.t.verify(); } catch (e) { return send(res, 200, { ok: true, verified: false, message: 'Réglages enregistrés, mais le service d’envoi refuse la connexion : ' + String(e.message).slice(0, 200) }); }
   const r = await sendMail({ to: user.email, subject: 'Test d’envoi Genius Recrutement', html: mailLayout('Les e-mails fonctionnent', '<p>Ce message confirme que Genius Recrutement peut envoyer des e-mails.</p>') });
+  if (r.sent) setTimeout(offsiteBackup, 5000);
   send(res, 200, { ok: true, verified: r.sent, message: r.sent ? `Connexion réussie. Un e-mail d’essai vient de partir vers ${user.email}.` : 'Connexion réussie, mais l’e-mail d’essai a échoué.' });
 }, { auth: true });
 

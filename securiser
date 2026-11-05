@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Sécurisation du serveur (à lancer une fois) :
+#  1. pare-feu : seuls SSH (22), le web (80, 443) et le réseau interne Docker entrent ;
+#  2. coupe LLMNR (service de nommage local inutile et exposé) ;
+#  3. mise à jour automatique : toutes les 5 minutes, si GitHub a une nouvelle version, elle est installée.
+set -euo pipefail
+DOSSIER="$(cd "$(dirname "$0")" && pwd)"
+
+# --- 1. Pare-feu (table séparée : ne touche pas aux règles de Docker) ---
+cat > /etc/pare-feu-hote.nft <<'NFT'
+table inet pare_feu_hote
+delete table inet pare_feu_hote
+table inet pare_feu_hote {
+  chain entree {
+    type filter hook input priority 0; policy drop;
+    ct state established,related accept
+    ct state invalid drop
+    iif "lo" accept
+    iifname "docker0" accept
+    iifname "br-*" accept
+    ip protocol icmp accept
+    meta l4proto ipv6-icmp accept
+    udp dport { 68, 546 } accept
+    tcp dport { 22, 80, 443 } accept
+    udp dport 443 accept
+  }
+}
+NFT
+cat > /etc/systemd/system/pare-feu-hote.service <<'UNIT'
+[Unit]
+Description=Pare-feu du serveur (entrées autorisées : SSH, web)
+After=network-pre.target
+Wants=network-pre.target
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -f /etc/pare-feu-hote.nft
+ExecStop=/usr/sbin/nft delete table inet pare_feu_hote
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now pare-feu-hote.service
+systemctl restart pare-feu-hote.service
+echo "Pare-feu actif."
+
+# --- 2. LLMNR coupé ---
+mkdir -p /etc/systemd/resolved.conf.d
+printf '[Resolve]\nLLMNR=no\nMulticastDNS=no\n' > /etc/systemd/resolved.conf.d/sans-llmnr.conf
+systemctl restart systemd-resolved
+sleep 2
+getent hosts github.com >/dev/null && echo "Résolution DNS : OK."
+
+# --- 3. Mise à jour automatique depuis GitHub ---
+cat > /usr/local/bin/genius-mise-a-jour <<SCRIPT
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$DOSSIER"
+git fetch -q origin main
+if [ "\$(git rev-parse HEAD)" != "\$(git rev-parse origin/main)" ]; then
+  echo "Nouvelle version trouvée, installation…"
+  git reset -q --hard origin/main
+  bash installer
+fi
+SCRIPT
+chmod +x /usr/local/bin/genius-mise-a-jour
+cat > /etc/systemd/system/genius-mise-a-jour.service <<'UNIT'
+[Unit]
+Description=Genius Recrutement : installe la dernière version publiée sur GitHub
+After=network-online.target docker.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/genius-mise-a-jour
+UNIT
+cat > /etc/systemd/system/genius-mise-a-jour.timer <<'UNIT'
+[Unit]
+Description=Vérifie toutes les 5 minutes s'il existe une nouvelle version de Genius Recrutement
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now genius-mise-a-jour.timer
+echo "Mise à jour automatique active (toutes les 5 minutes)."
+echo
+echo "TERMINE : serveur sécurisé."
