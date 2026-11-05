@@ -59,21 +59,22 @@ function authPage(title,sub,form,foot){
 function bindForm(sel,fn){var f=$(sel);f.addEventListener('submit',function(e){e.preventDefault();var b=$('button[type=submit]',f);showErr(f,'');busy(b,true);
   Promise.resolve().then(function(){return fn(formData(f),f);}).catch(function(err){showErr(f,err.message);}).then(function(){busy(b,false);});});}
 var V={};
+var CAND_NOTE='</p><div class="card" style="margin-top:18px;text-align:left"><h3 style="margin-bottom:6px">Vous êtes candidat ?</h3><p class="muted small">Vous n’avez pas besoin de compte. Ouvrez le lien personnel reçu par e-mail (ou par message) de l’entreprise qui recrute : il vous mène directement à votre test.</p></div><p>';
 V.login=function(){
-  authPage('Se connecter','Accédez aux tests et aux résultats de votre entreprise.',
+  authPage('Espace RH — connexion','Pour les recruteurs : créez vos tests et suivez les résultats de vos candidats.',
   '<form class="form" id="f"><label class="field">Adresse e-mail<input class="in" name="email" type="email" autocomplete="email" required></label>'+
   '<label class="field">Mot de passe<input class="in" name="password" type="password" autocomplete="current-password" required></label>'+
   '<p class="err" hidden></p><button class="btn primary block" type="submit">Se connecter</button>'+
-  '<a class="small" href="#/forgot">Mot de passe oublié ?</a></form>','Pas encore de compte ? <a href="#/signup">Créer un compte</a>');
+  '<a class="small" href="#/forgot">Mot de passe oublié ?</a></form>','Pas encore de compte entreprise ? <a href="#/signup">Créer un compte</a>'+CAND_NOTE);
   bindForm('#f',function(d){return api('POST','/api/login',d).then(function(r){ME=r.user;location.hash='#/tests';});});
 };
 V.signup=function(){
-  authPage('Créer un compte','Un compte par entreprise. Gratuit pendant la phase de test.',
+  authPage('Espace RH — créer un compte','Un compte par entreprise, pour les recruteurs. Gratuit pendant la phase de test.',
   '<form class="form" id="f"><label class="field">Nom de l’entreprise<input class="in" name="company" required maxlength="120" autocomplete="organization"></label>'+
   '<label class="field">Votre nom<input class="in" name="name" required maxlength="120" autocomplete="name"></label>'+
   '<label class="field">Adresse e-mail<input class="in" name="email" type="email" required autocomplete="email"></label>'+
   '<label class="field">Mot de passe <span class="hint">8 caractères au moins</span><input class="in" name="password" type="password" minlength="8" required autocomplete="new-password"></label>'+
-  '<p class="err" hidden></p><button class="btn primary block" type="submit">Créer mon compte</button></form>','Déjà inscrit ? <a href="#/login">Se connecter</a>');
+  '<p class="err" hidden></p><button class="btn primary block" type="submit">Créer mon compte</button></form>','Déjà inscrit ? <a href="#/login">Se connecter</a>'+CAND_NOTE);
   bindForm('#f',function(d){return api('POST','/api/signup',d).then(function(r){ME=r.user;toast('Compte créé. Bienvenue !');location.hash='#/tests/new';});});
 };
 V.forgot=function(){
