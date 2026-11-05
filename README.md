@@ -1,18 +1,18 @@
 # Genius Recrutement : version de test
 
-Version d'essai en ligne sur https://recrutement.alveris-consulting.com, servie par Caddy (HTTPS automatique) sur le VPS LWS.
+Version d'essai en ligne sur https://recrutement.alveris-consulting.com, sur le VPS LWS qui héberge aussi le CRM.
 
 ## Mise en ligne sur le VPS
 
 ```sh
-git clone https://github.com/<compte>/genius-recrutement.git /opt/genius-recrutement
-cd /opt/genius-recrutement
-docker compose up -d
+cd
+git clone https://github.com/consultingalveris-hash/genius-recrutement
+bash genius-recrutement/installer
 ```
 
-Mise à jour : `git pull && docker compose restart proxy`.
+Le script lance un petit conteneur qui sert la page, puis ajoute un bloc au Caddyfile du CRM (sauvegarde automatique, validation avant rechargement, retour arrière en cas d'erreur). Le CRM n'est pas redémarré.
 
-Prérequis : un enregistrement DNS de type A, `recrutement` vers l'adresse IP du VPS, et les ports 80 et 443 libres.
+Mise à jour de la page : `cd ~/genius-recrutement && git pull` (rien d'autre à faire).
 
 ## Limite de cette version
 

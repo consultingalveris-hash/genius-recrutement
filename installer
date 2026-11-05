@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Installe le site de test Genius Recrutement à côté du CRM, sans toucher au CRM lui-même :
+# un petit conteneur sert la page, et le Caddy du CRM (déjà sur les ports 80/443)
+# reçoit un bloc pour recrutement.alveris-consulting.com.
+set -euo pipefail
+DOMAINE=recrutement.alveris-consulting.com
+SITE_NOM=genius-recrutement-site
+DOSSIER="$(cd "$(dirname "$0")" && pwd)"
+
+C=$(docker ps --format '{{.Names}}' | grep -E 'caddy' | head -n1 || true)
+[ -n "$C" ] || { echo "ERREUR : conteneur Caddy du CRM introuvable."; exit 1; }
+echo "Caddy du CRM : $C"
+
+CF=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$C")
+if [ -z "$CF" ]; then
+  D=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy"}}{{.Source}}{{end}}{{end}}' "$C")
+  [ -n "$D" ] && CF="$D/Caddyfile"
+fi
+[ -n "$CF" ] && [ -f "$CF" ] || { echo "ERREUR : Caddyfile du CRM introuvable."; exit 1; }
+echo "Caddyfile : $CF"
+
+NET=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' "$C" | head -n1)
+echo "Réseau : $NET"
+
+docker rm -f "$SITE_NOM" >/dev/null 2>&1 || true
+docker run -d --name "$SITE_NOM" --restart unless-stopped --network "$NET" \
+  -v "$DOSSIER/site/recrutement:/usr/share/caddy:ro" caddy:2.8.4-alpine >/dev/null
+echo "Conteneur du site lancé."
+
+if grep -q "$DOMAINE" "$CF"; then
+  echo "Bloc déjà présent dans le Caddyfile."
+else
+  SAUVE="$CF.avant-genius-$(date +%Y%m%d-%H%M%S)"
+  cp -p "$CF" "$SAUVE"
+  echo "Sauvegarde : $SAUVE"
+  cat >> "$CF" <<BLOC
+
+$DOMAINE {
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+	reverse_proxy $SITE_NOM:80
+}
+BLOC
+  if ! docker exec "$C" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+    cat "$SAUVE" > "$CF"
+    echo "ERREUR : configuration refusée, le Caddyfile du CRM a été remis comme avant."
+    exit 1
+  fi
+fi
+
+docker exec "$C" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+echo
+echo "TERMINE : https://$DOMAINE (le certificat HTTPS peut prendre une minute)."
