@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Genius Recrutement</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top" id="top" hidden><div class="top-in">
+  <a class="brand" href="#/tests"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg></span>Genius Recrutement</a>
+  <nav class="nav" id="nav"></nav>
+  <div class="who"><span id="who"></span><button class="btn sm" id="logout">Se déconnecter</button></div>
+</div></header>
+<main id="app"></main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="modal"></div>
+<script>
+(function(){
+'use strict';
+var ME=null, META=null, app=document.getElementById('app');
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function $(s,r){return (r||document).querySelector(s);}
+function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
+var toastT;
+function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(function(){t.classList.remove('on');},4000);}
+function api(method,url,body){
+  return fetch(url,{method:method,credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined})
+    .then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok){var e=new Error(j.error||'Erreur, réessayez.');e.status=r.status;throw e;}return j;});});
+}
+function fmtDate(ms){return ms?new Date(ms).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'';}
+function fmtDT(ms){return ms?new Date(ms).toLocaleString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';}
+function fmtSecs(s){if(s==null)return '';var m=Math.floor(s/60),r=s%60;return m+' min '+(r<10?'0':'')+r;}
+var STATUS={invite:['Invité','neutral'],en_cours:['En cours','info'],termine:['Terminé','ok']};
+function pill(st){var x=STATUS[st]||[st,'neutral'];return '<span class="pill '+x[1]+'">'+x[0]+'</span>';}
+function busy(btn,on){if(!btn)return;btn.disabled=on;if(on){btn.dataset.t=btn.textContent;btn.textContent='Un instant…';}else if(btn.dataset.t){btn.textContent=btn.dataset.t;}}
+function formData(f){var o={};$$('[name]',f).forEach(function(el){o[el.name]=el.type==='checkbox'?el.checked:el.value;});return o;}
+function showErr(f,msg){var e=$('.err',f);if(e){e.textContent=msg||'';e.hidden=!msg;}}
+function modal(html){var m=$('#modal');m.innerHTML='<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true">'+html+'</div></div>';
+  $('.modal-bg',m).addEventListener('click',function(e){if(e.target===this)closeModal();});var f=$('input,textarea,button',m);if(f)f.focus();}
+function closeModal(){$('#modal').innerHTML='';}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+
+/* ---------- chrome ---------- */
+function chrome(active){
+  var top=$('#top');top.hidden=!ME;if(!ME)return;
+  $('#who').textContent=ME.company;
+  var items=[['#/tests','Mes tests','tests'],['#/mails','E-mails','mails'],['#/account','Mon compte','account']];
+  $('#nav').innerHTML=items.map(function(i){return '<a href="'+i[0]+'" class="'+(active===i[2]?'on':'')+'">'+i[1]+'</a>';}).join('');
+}
+$('#logout').addEventListener('click',function(){api('POST','/api/logout').then(function(){ME=null;location.hash='#/login';});});
+
+/* ---------- comptes ---------- */
+function authPage(title,sub,form,foot){
+  chrome();app.innerHTML='<div class="narrow"><a class="brand" href="/" style="margin-bottom:28px"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg></span>Genius Recrutement</a>'+
+  '<div class="card col"><div><h1 style="font-size:24px">'+title+'</h1>'+(sub?'<p class="muted" style="margin-top:6px">'+sub+'</p>':'')+'</div>'+form+'</div>'+(foot?'<p class="small muted" style="margin-top:16px;text-align:center">'+foot+'</p>':'')+'</div>';
+}
+function bindForm(sel,fn){var f=$(sel);f.addEventListener('submit',function(e){e.preventDefault();var b=$('button[type=submit]',f);showErr(f,'');busy(b,true);
+  Promise.resolve().then(function(){return fn(formData(f),f);}).catch(function(err){showErr(f,err.message);}).then(function(){busy(b,false);});});}
+var V={};
+V.login=function(){
+  authPage('Se connecter','Accédez aux tests et aux résultats de votre entreprise.',
+  '<form class="form" id="f"><label class="field">Adresse e-mail<input class="in" name="email" type="email" autocomplete="email" required></label>'+
+  '<label class="field">Mot de passe<input class="in" name="password" type="password" autocomplete="current-password" required></label>'+
+  '<p class="err" hidden></p><button class="btn primary block" type="submit">Se connecter</button>'+
+  '<a class="small" href="#/forgot">Mot de passe oublié ?</a></form>','Pas encore de compte ? <a href="#/signup">Créer un compte</a>');
+  bindForm('#f',function(d){return api('POST','/api/login',d).then(function(r){ME=r.user;location.hash='#/tests';});});
+};
+V.signup=function(){
+  authPage('Créer un compte','Un compte par entreprise. Gratuit pendant la phase de test.',
+  '<form class="form" id="f"><label class="field">Nom de l’entreprise<input class="in" name="company" required maxlength="120" autocomplete="organization"></label>'+
+  '<label class="field">Votre nom<input class="in" name="name" required maxlength="120" autocomplete="name"></label>'+
+  '<label class="field">Adresse e-mail<input class="in" name="email" type="email" required autocomplete="email"></label>'+
+  '<label class="field">Mot de passe <span class="hint">8 caractères au moins</span><input class="in" name="password" type="password" minlength="8" required autocomplete="new-password"></label>'+
+  '<p class="err" hidden></p><button class="btn primary block" type="submit">Créer mon compte</button></form>','Déjà inscrit ? <a href="#/login">Se connecter</a>');
+  bindForm('#f',function(d){return api('POST','/api/signup',d).then(function(r){ME=r.user;toast('Compte créé. Bienvenue !');location.hash='#/tests/new';});});
+};
+V.forgot=function(){
+  authPage('Mot de passe oublié','Indiquez votre adresse : vous recevrez un lien pour choisir un nouveau mot de passe.',
+  '<form class="form" id="f"><label class="field">Adresse e-mail<input class="in" name="email" type="email" required autocomplete="email"></label>'+
+  '<p class="err" hidden></p><button class="btn primary block" type="submit">Recevoir le lien</button></form>','<a href="#/login">Retour à la connexion</a>');
+  bindForm('#f',function(d,f){return api('POST','/api/forgot',d).then(function(){f.innerHTML='<p class="note ok">Si un compte existe avec cette adresse, un e-mail vient de partir. Pensez à regarder dans les courriers indésirables.</p>';});});
+};
+V.reset=function(tok){
+  authPage('Nouveau mot de passe','',
+  '<form class="form" id="f"><label class="field">Nouveau mot de passe <span class="hint">8 caractères au moins</span><input class="in" name="password" type="password" minlength="8" required autocomplete="new-password"></label>'+
+  '<p class="err" hidden></p><button class="btn primary block" type="submit">Enregistrer</button></form>');
+  bindForm('#f',function(d){d.token=tok;return api('POST','/api/reset',d).then(function(r){ME=r.user;toast('Mot de passe changé.');location.hash='#/tests';});});
+};
+
+/* ---------- liste des tests ---------- */
+V.tests=function(){
+  chrome('tests');app.innerHTML='<div class="wrap"><p class="muted">Chargement…</p></div>';
+  api('GET','/api/tests').then(function(r){
+    var act=r.tests.filter(function(t){return !t.archived;}),arc=r.tests.filter(function(t){return t.archived;});
+    function card(t){return '<a class="card col" href="#/tests/'+t.id+'" style="text-decoration:none;color:inherit">'+
+      '<div class="row between"><h3>'+esc(t.title)+'</h3>'+(t.expired?'<span class="pill warn">Date passée</span>':t.archived?'<span class="pill neutral">Archivé</span>':'<span class="pill ok">Ouvert</span>')+'</div>'+
+      '<p class="small muted">'+t.count+' questions · '+t.perQ+' s par question'+(t.deadline?' · jusqu’au '+fmtDate(new Date(t.deadline+'T12:00').getTime()):'')+'</p>'+
+      '<div class="row small"><b>'+t.candidates+'</b> invité'+(t.candidates>1?'s':'')+'<span class="muted">·</span><b>'+t.done+'</b> terminé'+(t.done>1?'s':'')+'</div></a>';}
+    app.innerHTML='<div class="wrap col"><div class="row between"><div><h1>Mes tests</h1><p class="muted" style="margin-top:4px">Un test par poste à pourvoir. Ouvrez-en un pour inviter des candidats et voir le classement.</p></div><a class="btn primary" href="#/tests/new">+ Nouveau test</a></div>'+
+      (act.length?'<div class="grid">'+act.map(card).join('')+'</div>':'<div class="card empty"><h2 style="color:var(--fg)">Aucun test pour l’instant</h2><p style="margin:8px 0 18px">Commencez par créer le test du poste que vous voulez pourvoir.</p><a class="btn primary" href="#/tests/new">Créer mon premier test</a></div>')+
+      (arc.length?'<h2 style="margin-top:12px">Archivés</h2><div class="grid">'+arc.map(card).join('')+'</div>':'')+'</div>';
+  }).catch(handle);
+};
+
+/* ---------- création / modification ---------- */
+V.testForm=function(id){
+  chrome('tests');app.innerHTML='<div class="wrap"><p class="muted">Chargement…</p></div>';
+  Promise.all([META?Promise.resolve(META):api('GET','/api/meta'),id?api('GET','/api/tests/'+id):Promise.resolve(null)]).then(function(x){
+    META=x[0];var t=x[1]?x[1].test:{title:'',replyEmail:ME.email,perQ:META.defaults.perQ,count:META.defaults.count,weights:META.defaults.weights,back:true,deadline:''};
+    var sel=function(name,vals,cur,lab){return '<select class="in" name="'+name+'">'+vals.map(function(v){return '<option value="'+v+'"'+(+v===+cur?' selected':'')+'>'+lab(v)+'</option>';}).join('')+'</select>';};
+    app.innerHTML='<div class="wrap" style="max-width:760px"><a href="'+(id?'#/tests/'+id:'#/tests')+'" class="small">← Retour</a>'+
+    '<h1 style="margin:10px 0 18px">'+(id?'Modifier le test':'Nouveau test')+'</h1>'+
+    '<form class="card form" id="f">'+
+    '<label class="field">Poste à pourvoir <span class="hint">Il apparaît dans l’e-mail envoyé au candidat.</span><input class="in" name="title" required maxlength="160" value="'+esc(t.title)+'" placeholder="Ex. : Conseiller clientèle – centre d’appels"></label>'+
+    '<label class="field">E-mail de réception des résultats <span class="hint">Vous y recevez un message à chaque test terminé. Les candidats peuvent aussi y répondre.</span><input class="in" name="replyEmail" type="email" required value="'+esc(t.replyEmail)+'"></label>'+
+    '<div class="two"><label class="field">Nombre de questions'+sel('count',[10,15,20,25,30,35].filter(function(n){return n<=META.bankSize;}),t.count,function(v){return v+' questions';})+'</label>'+
+    '<label class="field">Temps par question'+sel('perQ',[15,20,30,45,60],t.perQ,function(v){return v+' secondes';})+'</label></div>'+
+    '<label class="field">Date limite <span class="hint">Facultatif. Après cette date, le lien ne permet plus de commencer.</span><input class="in" name="deadline" type="date" value="'+esc(t.deadline)+'"></label>'+
+    '<fieldset style="border:1px solid var(--line);border-radius:12px;padding:14px 16px"><legend style="font-weight:700;padding:0 6px">Poids de chaque compétence dans la note</legend>'+
+    '<div class="two">'+META.comps.map(function(c){return '<label class="field">'+esc(c.name)+' <span class="hint">'+esc(c.desc)+'</span><input class="in" name="w_'+c.k+'" type="number" min="0" max="100" value="'+(t.weights[c.k]||0)+'"></label>';}).join('')+'</div>'+
+    '<p class="small muted" style="margin-top:8px">Les questions sont tirées dans cette proportion. Mettez 0 pour ne pas évaluer une compétence.</p></fieldset>'+
+    '<label class="check"><input type="checkbox" name="back"'+(t.back?' checked':'')+'><span><b>Autoriser le retour à la question précédente</b><br><span class="muted">Le candidat peut revenir sur une question tant qu’il lui reste du temps pour elle.</span></span></label>'+
+    '<p class="err" hidden></p><div class="row"><button class="btn primary" type="submit">'+(id?'Enregistrer':'Créer le test')+'</button><a class="btn" href="'+(id?'#/tests/'+id:'#/tests')+'">Annuler</a></div></form></div>';
+    bindForm('#f',function(d){
+      var body={title:d.title,replyEmail:d.replyEmail,count:+d.count,perQ:+d.perQ,deadline:d.deadline,back:d.back,weights:{}};
+      META.comps.forEach(function(c){body.weights[c.k]=+d['w_'+c.k]||0;});
+      return (id?api('PUT','/api/tests/'+id,body).then(function(){return {id:id};}):api('POST','/api/tests',body)).then(function(r){toast(id?'Test enregistré.':'Test créé. Invitez maintenant vos candidats.');location.hash='#/tests/'+r.id;});
+    });
+  }).catch(handle);
+};
+
+/* ---------- un test : candidats et résultats ---------- */
+var filt={q:'',st:''};
+V.test=function(id){
+  chrome('tests');
+  Promise.all([META?Promise.resolve(META):api('GET','/api/meta'),api('GET','/api/tests/'+id)]).then(function(x){
+    META=x[0];var t=x[1].test,cands=x[1].candidates;
+    var done=cands.filter(function(c){return c.status==='termine';}),avg=done.length?Math.round(done.reduce(function(s,c){return s+c.global;},0)/done.length):null;
+    var rank=0;cands.forEach(function(c){c.rank=c.status==='termine'?++rank:null;});
+    function rows(){
+      var q=filt.q.toLowerCase();
+      var list=cands.filter(function(c){return (!filt.st||c.status===filt.st)&&(!q||(c.name+' '+c.email).toLowerCase().indexOf(q)>=0);});
+      if(!list.length)return '<tr><td colspan="'+(6+META.comps.length)+'" class="empty">'+(cands.length?'Aucun candidat ne correspond à ce filtre.':'Aucun candidat invité pour l’instant. Cliquez sur « Inviter des candidats ».')+'</td></tr>';
+      return list.map(function(c){
+        var alerts=[];if(c.timeout)alerts.push('Temps dépassé');if(c.exits)alerts.push(c.exits+' sortie'+(c.exits>1?'s':'')+' de page');
+        return '<tr><td class="num">'+(c.rank||'')+'</td><td><b>'+esc(c.name)+'</b><div class="small muted">'+esc(c.email)+'</div></td><td>'+pill(c.status)+'</td>'+
+        '<td class="num">'+(c.global!=null?'<b>'+c.global+' %</b>':'')+'</td>'+
+        META.comps.map(function(k){var v=c.scores&&c.scores[k.k];return '<td class="num">'+(v!=null?v+' %':'')+'</td>';}).join('')+
+        '<td class="small">'+(c.secs!=null?fmtSecs(c.secs):'')+(alerts.length?'<div><span class="pill warn">'+alerts.join(' · ')+'</span></div>':'')+'</td>'+
+        '<td><div class="row" style="gap:6px;flex-wrap:nowrap">'+(c.status==='termine'?'<button class="btn sm" data-detail="'+c.id+'">Détail</button>':'<button class="btn sm" data-resend="'+c.id+'">Renvoyer</button><button class="btn sm" data-copy="'+esc(c.link)+'">Copier le lien</button>')+'<button class="btn sm danger" data-del="'+c.id+'" aria-label="Retirer '+esc(c.name)+'">✕</button></div></td></tr>';
+      }).join('');
+    }
+    app.innerHTML='<div class="wrap col"><a href="#/tests" class="small">← Mes tests</a>'+
+    '<div class="row between"><div><h1>'+esc(t.title)+'</h1><p class="muted" style="margin-top:4px">'+t.count+' questions · '+t.perQ+' s par question · résultats envoyés à '+esc(t.replyEmail)+(t.deadline?' · jusqu’au '+fmtDate(new Date(t.deadline+'T12:00').getTime()):'')+'</p></div>'+
+    '<div class="row"><button class="btn primary" id="inv">+ Inviter des candidats</button><a class="btn" href="#/tests/'+t.id+'/edit">Modifier</a><button class="btn" id="arch">'+(t.archived?'Désarchiver':'Archiver')+'</button></div></div>'+
+    (t.expired?'<p class="note warn">La date limite est passée : les candidats qui n’ont pas commencé ne peuvent plus le faire. Modifiez la date pour rouvrir le test.</p>':'')+
+    '<div class="stats"><div class="stat"><span class="small muted">Invités</span><b>'+cands.length+'</b></div><div class="stat"><span class="small muted">En cours</span><b>'+cands.filter(function(c){return c.status==='en_cours';}).length+'</b></div><div class="stat"><span class="small muted">Terminés</span><b>'+done.length+'</b></div><div class="stat"><span class="small muted">Note moyenne</span><b>'+(avg!=null?avg+' %':'–')+'</b></div></div>'+
+    '<div class="card tight"><div class="row between" style="padding:14px 16px;border-bottom:1px solid var(--line-soft)"><h2>Classement</h2><div class="row">'+
+    '<input class="in" id="q" placeholder="Rechercher un nom ou un e-mail" value="'+esc(filt.q)+'" style="width:240px;min-height:36px">'+
+    '<select class="in" id="st" style="width:auto;min-height:36px"><option value="">Tous les statuts</option><option value="termine"'+(filt.st==='termine'?' selected':'')+'>Terminés</option><option value="en_cours"'+(filt.st==='en_cours'?' selected':'')+'>En cours</option><option value="invite"'+(filt.st==='invite'?' selected':'')+'>Invités</option></select>'+
+    '<a class="btn sm" href="/api/tests/'+t.id+'/export.csv">Exporter (Excel)</a></div></div>'+
+    '<div class="table-wrap"><table><thead><tr><th class="num">Rang</th><th>Candidat</th><th>Statut</th><th class="num">Note</th>'+META.comps.map(function(k){return '<th class="num">'+esc(k.short)+'</th>';}).join('')+'<th>Durée</th><th></th></tr></thead><tbody id="tb">'+rows()+'</tbody></table></div></div>'+
+    '<div class="row"><button class="link danger" id="delt" style="color:var(--danger)">Supprimer ce test et tous ses résultats</button></div></div>';
+    $('#q').addEventListener('input',function(){filt.q=this.value;$('#tb').innerHTML=rows();});
+    $('#st').addEventListener('change',function(){filt.st=this.value;$('#tb').innerHTML=rows();});
+    $('#inv').addEventListener('click',function(){inviteModal(t);});
+    $('#arch').addEventListener('click',function(){api('PUT','/api/tests/'+t.id,{archived:!t.archived}).then(function(){toast(t.archived?'Test rouvert.':'Test archivé.');route();}).catch(handle);});
+    $('#delt').addEventListener('click',function(){
+      modal('<h2>Supprimer ce test ?</h2><p class="muted" style="margin:10px 0 18px">Le test « '+esc(t.title)+' » et les résultats de ses '+cands.length+' candidats seront effacés définitivement. Pensez à exporter le classement avant.</p><div class="row"><button class="btn primary" id="yes" style="background:var(--danger);border-color:var(--danger)">Supprimer définitivement</button><button class="btn" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Annuler</button></div>');
+      $('#yes').addEventListener('click',function(){api('DELETE','/api/tests/'+t.id).then(function(){closeModal();toast('Test supprimé.');location.hash='#/tests';}).catch(handle);});
+    });
+    $('#tb').addEventListener('click',function(e){
+      var b=e.target.closest('button');if(!b)return;
+      if(b.dataset.copy){copyText(b.dataset.copy);}
+      else if(b.dataset.resend){busy(b,true);api('POST','/api/candidates/'+b.dataset.resend+'/resend').then(function(r){toast(r.sent?'Invitation renvoyée.':r.test?'Les e-mails ne sont pas encore activés : copiez le lien et envoyez-le vous-même.':'L’envoi a échoué. Réessayez plus tard.');}).catch(handle).then(function(){busy(b,false);});}
+      else if(b.dataset.del){var c=cands.filter(function(x){return x.id==b.dataset.del;})[0];
+        modal('<h2>Retirer '+esc(c.name)+' ?</h2><p class="muted" style="margin:10px 0 18px">Son lien ne fonctionnera plus et son résultat sera effacé.</p><div class="row"><button class="btn primary" id="yes" style="background:var(--danger);border-color:var(--danger)">Retirer</button><button class="btn" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Annuler</button></div>');
+        $('#yes').addEventListener('click',function(){api('DELETE','/api/candidates/'+c.id).then(function(){closeModal();toast('Candidat retiré.');route();}).catch(handle);});}
+      else if(b.dataset.detail){detailModal(b.dataset.detail);}
+    });
+  }).catch(handle);
+};
+function copyText(s){
+  try{navigator.clipboard.writeText(s).then(function(){toast('Lien copié. Collez-le dans un message au candidat.');},function(){prompt('Copiez ce lien :',s);});}catch(e){prompt('Copiez ce lien :',s);}
+}
+function parseList(txt){
+  return txt.split(/\r?\n/).map(function(l){return l.trim();}).filter(Boolean).map(function(l){
+    var m=l.match(/[^\s<>,;]+@[^\s<>,;]+/);var email=m?m[0]:'';var name=l.replace(email,'').replace(/[<>,;\t]+/g,' ').replace(/\s+/g,' ').trim();
+    return {name:name||email.split('@')[0],email:email};});
+}
+function inviteModal(t){
+  modal('<h2>Inviter des candidats</h2><p class="muted" style="margin:6px 0 14px">Une ligne par candidat : son nom, puis son adresse e-mail. Vous pouvez coller une colonne copiée depuis Excel.</p>'+
+  '<form class="form" id="fi"><textarea class="in" name="list" rows="7" placeholder="Awa Diop, awa.diop@exemple.com&#10;Moussa Ndiaye moussa@exemple.sn" required></textarea>'+
+  '<label class="check"><input type="checkbox" name="send" checked><span>Envoyer tout de suite l’e-mail d’invitation avec le lien du test</span></label>'+
+  '<p class="err" hidden></p><div class="row"><button class="btn primary" type="submit">Inviter</button><button class="btn" type="button" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Annuler</button></div></form>');
+  bindForm('#fi',function(d,f){
+    var list=parseList(d.list);if(!list.length)throw new Error('Ajoutez au moins une ligne.');
+    var bad=list.filter(function(x){return !x.email;});if(bad.length)throw new Error('Adresse e-mail manquante sur la ligne : '+bad[0].name);
+    return api('POST','/api/tests/'+t.id+'/invite',{candidates:list,send:d.send}).then(function(r){
+      var msg='<h2>'+r.added+' candidat'+(r.added>1?'s':'')+' ajouté'+(r.added>1?'s':'')+'</h2><div class="col" style="margin:14px 0">';
+      if(r.sent)msg+='<p class="note ok">'+r.sent+' e-mail'+(r.sent>1?'s':'')+' d’invitation envoyé'+(r.sent>1?'s':'')+'.</p>';
+      if(r.test)msg+='<p class="note warn">Les e-mails ne sont pas encore activés sur la plateforme : '+r.test+' invitation'+(r.test>1?'s n’ont':' n’a')+' pas pu partir. Utilisez le bouton « Copier le lien » à côté de chaque candidat et envoyez-le vous-même (WhatsApp, e-mail…).</p>';
+      if(r.failed)msg+='<p class="note warn">'+r.failed+' envoi'+(r.failed>1?'s ont':' a')+' échoué. Utilisez « Renvoyer » plus tard.</p>';
+      if(r.skipped.length)msg+='<div class="note info"><b>Lignes ignorées :</b><br>'+r.skipped.map(esc).join('<br>')+'</div>';
+      msg+='</div><button class="btn primary" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Fermer</button>';
+      $('#modal .modal').innerHTML=msg;route();
+    });
+  });
+}
+function detailModal(cid){
+  api('GET','/api/candidates/'+cid).then(function(r){
+    var c=r.candidate,d=r.detail,comps={};META.comps.forEach(function(k){comps[k.k]=k;});
+    var html='<div class="row between"><div><h2>'+esc(c.name)+'</h2><p class="small muted">'+esc(c.email)+' · terminé le '+fmtDT(c.endedAt)+' · '+fmtSecs(c.secs)+'</p></div><b style="font-size:26px">'+c.global+' %</b></div>'+
+    '<div class="col" style="margin:16px 0;gap:10px">'+META.comps.map(function(k){var v=c.scores&&c.scores[k.k];if(v==null)return '';return '<div><div class="row between small"><span>'+esc(k.name)+'</span><b>'+v+' %</b></div><div class="bar"><i style="width:'+v+'%"></i></div>'+(v<60?'<p class="small muted" style="margin-top:4px">À creuser en entretien : '+esc(k.ask)+'</p>':'')+'</div>';}).join('')+'</div>'+
+    ((c.timeout||c.exits)?'<p class="note warn">'+(c.timeout?'Le temps total a été dépassé. ':'')+(c.exits?'Le candidat a quitté la page '+c.exits+' fois pendant le test.':'')+'</p>':'')+
+    '<label class="field" style="margin-top:14px">Note du recruteur <span class="hint">Visible par votre équipe seulement. Reprise dans l’export.</span><textarea class="in" id="cnote" rows="3">'+esc(c.note)+'</textarea></label><button class="btn sm" id="savenote" style="margin-top:8px">Enregistrer la note</button>'+
+    '<h3 style="margin:20px 0 8px">Réponses question par question</h3><div class="col" style="gap:8px">'+d.detail.map(function(q,i){
+      var ok=q.answer===q.good;return '<div class="card" style="padding:12px 14px"><div class="row between small"><span class="muted">'+(i+1)+'. '+esc(comps[q.c]?comps[q.c].short:'')+' · '+esc(q.skill)+'</span>'+(q.answer==null?'<span class="pill neutral">Sans réponse</span>':ok?'<span class="pill ok">Juste</span>':'<span class="pill warn">Faux</span>')+'</div><p style="margin:6px 0;font-weight:600">'+esc(q.text)+'</p>'+
+      (q.answer!=null&&!ok?'<p class="small">Sa réponse : '+esc(q.options[q.answer])+'</p>':'')+'<p class="small muted">Bonne réponse : '+esc(q.options[q.good])+'</p></div>';}).join('')+'</div>'+
+    '<div class="row" style="margin-top:16px"><button class="btn" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Fermer</button></div>';
+    modal(html);
+    $('#savenote').addEventListener('click',function(){api('PUT','/api/candidates/'+cid,{note:$('#cnote').value}).then(function(){toast('Note enregistrée.');}).catch(handle);});
+  }).catch(handle);
+}
+
+/* ---------- e-mails ---------- */
+V.mails=function(){
+  chrome('mails');
+  api('GET','/api/outbox').then(function(r){
+    var lab={envoye:['Envoyé','ok'],non_envoye:['Non envoyé','warn'],echec:['Échec','warn'],en_cours:['En cours','info']};
+    app.innerHTML='<div class="wrap col"><div><h1>E-mails</h1><p class="muted" style="margin-top:4px">Les 100 derniers messages envoyés par la plateforme au nom de votre entreprise.</p></div>'+
+    (r.mailConfigured?'':'<p class="note warn"><b>Les e-mails ne sont pas encore activés sur la plateforme.</b> Les messages ci-dessous ont été préparés mais ne sont pas partis. En attendant, copiez le lien de chaque candidat depuis la page du test et envoyez-le vous-même.</p>')+
+    '<div class="card tight"><div class="table-wrap"><table><thead><tr><th>Date</th><th>Destinataire</th><th>Objet</th><th>État</th><th></th></tr></thead><tbody>'+
+    (r.mails.length?r.mails.map(function(m){var l=lab[m.status]||[m.status,'neutral'];return '<tr><td class="small">'+fmtDT(m.created_at)+'</td><td>'+esc(m.recipient)+'</td><td>'+esc(m.subject)+'</td><td><span class="pill '+l[1]+'" title="'+esc(m.error||'')+'">'+l[0]+'</span></td><td><button class="btn sm" data-see="'+m.id+'">Voir</button></td></tr>';}).join(''):'<tr><td colspan="5" class="empty">Aucun e-mail pour l’instant.</td></tr>')+
+    '</tbody></table></div></div></div>';
+    $$('[data-see]').forEach(function(b){b.addEventListener('click',function(){api('GET','/api/outbox/'+b.dataset.see).then(function(x){
+      modal('<p class="small muted">À : '+esc(x.mail.recipient)+'</p><h2 style="margin:4px 0 12px">'+esc(x.mail.subject)+'</h2><iframe sandbox="" style="width:100%;height:420px;border:1px solid var(--line);border-radius:10px;background:#fff" id="mf"></iframe><div class="row" style="margin-top:12px"><button class="btn" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Fermer</button></div>');
+      $('#mf').srcdoc=x.mail.body;}).catch(handle);});});
+  }).catch(handle);
+};
+
+/* ---------- compte ---------- */
+V.account=function(){
+  chrome('account');
+  app.innerHTML='<div class="wrap col" style="max-width:760px"><h1>Mon compte</h1>'+
+  '<div class="card col"><h2>Mes informations</h2><p>'+esc(ME.name)+'<br><span class="muted">'+esc(ME.email)+' · '+esc(ME.company)+'</span></p></div>'+
+  '<form class="card form" id="fp"><h2>Changer de mot de passe</h2><label class="field">Mot de passe actuel<input class="in" type="password" name="current" required autocomplete="current-password"></label>'+
+  '<label class="field">Nouveau mot de passe <span class="hint">8 caractères au moins</span><input class="in" type="password" name="password" minlength="8" required autocomplete="new-password"></label><p class="err" hidden></p><div><button class="btn primary" type="submit">Changer</button></div></form>'+
+  (ME.superadmin?'<div id="mailcfg" class="card"><p class="muted">Chargement des réglages e-mail…</p></div>':'')+'</div>';
+  bindForm('#fp',function(d,f){return api('POST','/api/password',d).then(function(){f.reset();toast('Mot de passe changé.');});});
+  if(ME.superadmin)api('GET','/api/admin/mail').then(function(m){
+    var box=$('#mailcfg');
+    box.innerHTML='<form class="form" id="fm"><div><h2>Envoi des e-mails de la plateforme</h2><p class="muted" style="margin-top:4px">Réservé au propriétaire de Genius Recrutement. Ces réglages viennent du service d’envoi (par exemple Brevo, rubrique « SMTP &amp; API »).</p></div>'+
+    (m.hasPass?'<p class="note ok">Un service d’envoi est enregistré.</p>':'<p class="note warn">Aucun service d’envoi : les e-mails ne partent pas encore.</p>')+
+    '<div class="two"><label class="field">Serveur SMTP<input class="in" name="host" value="'+esc(m.host)+'" placeholder="smtp-relay.brevo.com"></label><label class="field">Port<input class="in" name="port" type="number" value="'+esc(m.port)+'"></label></div>'+
+    '<label class="field">Identifiant SMTP<input class="in" name="user" value="'+esc(m.user)+'" autocomplete="off"></label>'+
+    '<label class="field">Clé SMTP <span class="hint">'+(m.hasPass?'Laissez vide pour garder la clé déjà enregistrée.':'Collez la clé fournie par le service d’envoi.')+'</span><input class="in" name="pass" type="password" autocomplete="new-password"></label>'+
+    '<label class="field">Expéditeur affiché <span class="hint">Une adresse validée chez le service d’envoi, par exemple : Genius Recrutement &lt;contact@alveris-consulting.com&gt;</span><input class="in" name="from" value="'+esc(m.from)+'"></label>'+
+    '<p class="err" hidden></p><div><button class="btn primary" type="submit">Enregistrer et tester</button></div><div id="mres"></div></form>';
+    bindForm('#fm',function(d){return api('PUT','/api/admin/mail',d).then(function(r){$('#mres').innerHTML='<p class="note '+(r.verified?'ok':'warn')+'">'+esc(r.message)+'</p>';});});
+  }).catch(handle);
+};
+
+/* ---------- routeur ---------- */
+function handle(e){if(e.status===401){ME=null;location.hash='#/login';return;}if(e.status===404){app.innerHTML='<div class="wrap"><div class="card empty"><h2 style="color:var(--fg)">Page introuvable</h2><p style="margin:8px 0 16px">'+esc(e.message)+'</p><a class="btn" href="#/tests">Retour à mes tests</a></div></div>';return;}toast(e.message);}
+function route(){
+  var h=location.hash.replace(/^#\/?/,'')||'tests',p=h.split('/');
+  var pub={login:1,signup:1,forgot:1,reset:1};
+  if(!ME&&!pub[p[0]]){location.hash='#/login';return;}
+  if(ME&&(p[0]==='login'||p[0]==='signup')){location.hash='#/tests';return;}
+  window.scrollTo(0,0);
+  if(p[0]==='reset')return V.reset(p[1]||'');
+  if(p[0]==='tests'&&p[1]==='new')return V.testForm(null);
+  if(p[0]==='tests'&&p[1]&&p[2]==='edit')return V.testForm(p[1]);
+  if(p[0]==='tests'&&p[1]){if(V._last!==p[1]){filt={q:'',st:''};V._last=p[1];}return V.test(p[1]);}
+  (V[p[0]]||V.tests)();
+}
+window.addEventListener('hashchange',route);
+api('GET','/api/me').then(function(r){ME=r.user;route();}).catch(function(){app.innerHTML='<div class="narrow"><p class="note warn">Le serveur ne répond pas. Réessayez dans un instant.</p></div>';});
+})();
+</script>
+</body>
+</html>

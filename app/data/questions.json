@@ -1,0 +1,918 @@
+{
+ "levels": [
+  "Simple",
+  "Moyenne",
+  "Difficile"
+ ],
+ "comps": [
+  {
+   "k": "M",
+   "name": "Connaissances métier",
+   "short": "Métier",
+   "kind": "Connaissance métier",
+   "desc": "Relation client, procédures, indicateurs du centre d’appels",
+   "ask": "Demandez-lui d’expliquer un indicateur suivi à son dernier poste et ce qu’il faisait pour l’améliorer."
+  },
+  {
+   "k": "S",
+   "name": "Mises en situation",
+   "short": "Situations",
+   "kind": "Mise en situation",
+   "desc": "Client mécontent, réclamation, priorités",
+   "ask": "Faites-lui raconter un appel difficile : ce qu’il a dit, ce qu’il a fait, ce qu’il referait autrement."
+  },
+  {
+   "k": "F",
+   "name": "Français écrit",
+   "short": "Français",
+   "kind": "Français écrit",
+   "desc": "Orthographe, formulation d’un courriel au client",
+   "ask": "Faites rédiger en cinq minutes une réponse à une réclamation écrite."
+  },
+  {
+   "k": "L",
+   "name": "Logique",
+   "short": "Logique",
+   "kind": "Logique",
+   "desc": "Raisonnement, calculs simples d’indicateurs",
+   "ask": "Proposez un petit calcul d’indicateur à voix haute et écoutez le raisonnement."
+  }
+ ],
+ "bank": [
+  {
+   "id": "M1",
+   "c": "M",
+   "lvl": "Simple",
+   "skill": "Indicateurs de qualité",
+   "t": "Que signifie « taux de résolution au premier appel » ?",
+   "o": [
+    [
+     "Le nombre d’appels décrochés en moins d’une minute",
+     0
+    ],
+    [
+     "La part des demandes réglées dès le premier contact, sans que le client ait à rappeler",
+     1
+    ],
+    [
+     "La part des clients qui raccrochent avant d’être pris en charge",
+     0
+    ],
+    [
+     "Le temps moyen passé sur le premier appel de la journée",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "M2",
+   "c": "M",
+   "lvl": "Moyenne",
+   "skill": "Durée moyenne de traitement",
+   "t": "Que comprend la durée moyenne de traitement (DMT) d’un appel ?",
+   "o": [
+    [
+     "Seulement le temps de conversation avec le client",
+     0
+    ],
+    [
+     "Le temps d’attente du client avant le décroché",
+     0
+    ],
+    [
+     "La conversation, les mises en attente et le travail après l’appel",
+     1
+    ],
+    [
+     "Le temps entre deux appels",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "M3",
+   "c": "M",
+   "lvl": "Moyenne",
+   "skill": "Confidentialité des données",
+   "t": "Quelle information ne doit jamais être demandée à un client au téléphone ?",
+   "o": [
+    [
+     "Le code secret de sa carte bancaire",
+     1
+    ],
+    [
+     "Son numéro de client",
+     0
+    ],
+    [
+     "Le motif de son appel",
+     0
+    ],
+    [
+     "Un numéro où le rappeler",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "M4",
+   "c": "M",
+   "lvl": "Simple",
+   "skill": "Vocabulaire du centre d’appels",
+   "t": "Qu’est-ce qu’un appel entrant ?",
+   "o": [
+    [
+     "Un appel passé par le conseiller pour vendre un produit",
+     0
+    ],
+    [
+     "Un appel transféré à un superviseur",
+     0
+    ],
+    [
+     "Un appel interne entre deux services",
+     0
+    ],
+    [
+     "Un appel passé par le client vers le centre",
+     1
+    ]
+   ]
+  },
+  {
+   "id": "M5",
+   "c": "M",
+   "lvl": "Simple",
+   "skill": "Usage du script d’appel",
+   "t": "À quoi sert le script d’appel ?",
+   "o": [
+    [
+     "À être lu mot à mot, quel que soit le client",
+     0
+    ],
+    [
+     "À guider l’échange, en l’adaptant à chaque client",
+     1
+    ],
+    [
+     "À remplacer la formation du conseiller",
+     0
+    ],
+    [
+     "À ramener tous les appels à moins d’une minute",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "M6",
+   "c": "M",
+   "lvl": "Difficile",
+   "skill": "Niveau de service",
+   "t": "Un niveau de service « 80/20 » signifie :",
+   "o": [
+    [
+     "80 % des appels décrochés en moins de 20 secondes",
+     1
+    ],
+    [
+     "80 appels traités par conseiller en 20 heures",
+     0
+    ],
+    [
+     "20 % de clients satisfaits sur 80 interrogés",
+     0
+    ],
+    [
+     "80 % des appels durent moins de 20 minutes",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "M7",
+   "c": "M",
+   "lvl": "Moyenne",
+   "skill": "Mise en attente",
+   "t": "Avant de mettre un client en attente, que faut-il faire ?",
+   "o": [
+    [
+     "Rien : l’attente paraît plus courte sans explication",
+     0
+    ],
+    [
+     "Lui demander de rappeler plus tard",
+     0
+    ],
+    [
+     "Lui expliquer la raison, demander son accord et annoncer la durée",
+     1
+    ],
+    [
+     "Couper le micro sans le prévenir",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "M8",
+   "c": "M",
+   "lvl": "Simple",
+   "skill": "Conclusion d’un appel",
+   "t": "Comment conclure un appel traité ?",
+   "o": [
+    [
+     "Raccrocher dès que la solution est donnée",
+     0
+    ],
+    [
+     "Proposer systématiquement un nouveau produit",
+     0
+    ],
+    [
+     "Demander au client de noter le conseiller",
+     0
+    ],
+    [
+     "Récapituler ce qui a été convenu, vérifier qu’il ne reste pas de demande, puis prendre congé",
+     1
+    ]
+   ]
+  },
+  {
+   "id": "M9",
+   "c": "M",
+   "lvl": "Moyenne",
+   "skill": "Traçabilité des appels",
+   "t": "Pourquoi faut-il noter chaque appel dans le dossier du client ?",
+   "o": [
+    [
+     "Pour allonger la durée de l’appel",
+     0
+    ],
+    [
+     "Pour que le prochain conseiller connaisse l’historique et que le client n’ait pas à tout répéter",
+     1
+    ],
+    [
+     "Parce que le client le demande toujours",
+     0
+    ],
+    [
+     "Pour remplacer l’enquête de satisfaction",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "S8",
+   "c": "S",
+   "lvl": "Simple",
+   "skill": "Client pressé",
+   "t": "Un client dit qu’il n’a que deux minutes, mais sa demande exige une vérification plus longue. Que faites-vous ?",
+   "o": [
+    [
+     "Aller à l’essentiel, dire ce qui peut être fait tout de suite et convenir d’un rappel à l’heure qui lui convient",
+     4
+    ],
+    [
+     "Lui dire que deux minutes ne suffisent pas et qu’il doit rappeler",
+     0
+    ],
+    [
+     "Traiter la demande à toute vitesse, sans vérifier",
+     0
+    ],
+    [
+     "Faire la vérification complète sans tenir compte de son temps",
+     1
+    ]
+   ]
+  },
+  {
+   "id": "S9",
+   "c": "S",
+   "lvl": "Moyenne",
+   "skill": "Erreur de l’entreprise",
+   "t": "Le client a été facturé deux fois par erreur de l’entreprise. Que dites-vous en premier ?",
+   "o": [
+    [
+     "Que l’erreur vient sûrement de sa banque",
+     0
+    ],
+    [
+     "Que vous présentez des excuses au nom de l’entreprise et lancez la correction, en indiquant le délai",
+     4
+    ],
+    [
+     "Qu’il doit envoyer un courrier de réclamation",
+     1
+    ],
+    [
+     "Que vous n’y êtes pour rien",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "S10",
+   "c": "S",
+   "lvl": "Moyenne",
+   "skill": "Demande destinée à un autre service",
+   "t": "Le client s’est trompé de service : sa demande relève d’une autre équipe. Que faites-vous ?",
+   "o": [
+    [
+     "Lui donner le bon numéro et raccrocher",
+     2
+    ],
+    [
+     "Lui dire que ce n’est pas ici",
+     0
+    ],
+    [
+     "Essayer de répondre quand même, sans être sûr",
+     0
+    ],
+    [
+     "Lui expliquer, puis le transférer au bon service en résumant sa demande au collègue",
+     4
+    ]
+   ]
+  },
+  {
+   "id": "S11",
+   "c": "S",
+   "lvl": "Difficile",
+   "skill": "Client qui veut résilier",
+   "t": "Après un incident, un client annonce qu’il veut résilier son contrat. Quelle est la meilleure première réaction ?",
+   "o": [
+    [
+     "Lui rappeler les frais de résiliation",
+     0
+    ],
+    [
+     "Enregistrer la résiliation sans poser de question",
+     1
+    ],
+    [
+     "L’écouter, comprendre la cause de l’incident et proposer une solution avant de parler de résiliation",
+     4
+    ],
+    [
+     "Lui promettre une remise sans y être autorisé",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "S1",
+   "c": "S",
+   "lvl": "Moyenne",
+   "skill": "Client mécontent qui rappelle",
+   "t": "Un client appelle pour la troisième fois au sujet de la même panne. Il est très énervé. Quelle est votre première action ?",
+   "o": [
+    [
+     "Lui expliquer que la panne ne dépend pas de vous",
+     0
+    ],
+    [
+     "Reconnaître le désagrément, puis consulter l’historique de ses appels",
+     4
+    ],
+    [
+     "Le transférer tout de suite à un superviseur",
+     1
+    ],
+    [
+     "Lui proposer de rappeler plus tard, quand il sera calme",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "S2",
+   "c": "S",
+   "lvl": "Difficile",
+   "skill": "Client insultant",
+   "t": "Un client insulte le conseiller. Quelle réponse respecte la procédure ?",
+   "o": [
+    [
+     "Raccrocher immédiatement, sans prévenir",
+     0
+    ],
+    [
+     "Répondre sur le même ton pour se faire respecter",
+     0
+    ],
+    [
+     "Garder le silence jusqu’à ce qu’il se calme",
+     1
+    ],
+    [
+     "Rester calme, rappeler le cadre de l’échange et proposer de poursuivre",
+     4
+    ]
+   ]
+  },
+  {
+   "id": "S3",
+   "c": "S",
+   "lvl": "Moyenne",
+   "skill": "Question dont on ignore la réponse",
+   "t": "Un client pose une question technique dont vous ne connaissez pas la réponse. Que faites-vous ?",
+   "o": [
+    [
+     "Dire que vous vérifiez, le mettre en attente avec son accord et chercher la réponse auprès d’un référent ou dans la base de connaissances",
+     4
+    ],
+    [
+     "Donner la réponse la plus probable pour ne pas le faire attendre",
+     0
+    ],
+    [
+     "Lui dire que ce n’est pas votre service",
+     0
+    ],
+    [
+     "Noter sa demande au dossier et lui proposer un rappel",
+     2
+    ]
+   ]
+  },
+  {
+   "id": "S4",
+   "c": "S",
+   "lvl": "Difficile",
+   "skill": "Demande hors de vos droits",
+   "t": "Le client exige un geste commercial que vous n’avez pas le droit d’accorder. Que faites-vous ?",
+   "o": [
+    [
+     "L’accorder pour clore l’appel",
+     0
+    ],
+    [
+     "Refuser en citant le règlement, sans autre proposition",
+     1
+    ],
+    [
+     "Expliquer ce que vous pouvez faire, proposer une solution autorisée et transmettre la demande au responsable si besoin",
+     4
+    ],
+    [
+     "Promettre que le responsable acceptera",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "S5",
+   "c": "S",
+   "lvl": "Simple",
+   "skill": "Client qui ne comprend pas",
+   "t": "Après deux explications, un client âgé ne comprend toujours pas la démarche. Que faites-vous ?",
+   "o": [
+    [
+     "Répéter la même explication, plus fort",
+     0
+    ],
+    [
+     "Lui conseiller de demander à un proche",
+     1
+    ],
+    [
+     "Envoyer la démarche par SMS et clore l’appel",
+     2
+    ],
+    [
+     "Reformuler avec des mots simples, étape par étape, en vérifiant à chaque étape",
+     4
+    ]
+   ]
+  },
+  {
+   "id": "S6",
+   "c": "S",
+   "lvl": "Difficile",
+   "skill": "Priorisation des demandes",
+   "t": "Trois demandes arrivent en même temps : un client en ligne qui attend, un courriel à traiter dans la journée, un collègue qui demande une aide non urgente. Dans quel ordre les traiter ?",
+   "o": [
+    [
+     "Le collègue, le client en ligne, le courriel",
+     0
+    ],
+    [
+     "Le client en ligne, le courriel, le collègue",
+     4
+    ],
+    [
+     "Le courriel, le client en ligne, le collègue",
+     0
+    ],
+    [
+     "Le client en ligne, le collègue, le courriel",
+     2
+    ]
+   ]
+  },
+  {
+   "id": "S7",
+   "c": "S",
+   "lvl": "Moyenne",
+   "skill": "Correction d’une erreur",
+   "t": "Vous réalisez que vous avez donné une information fausse au client précédent. Que faites-vous ?",
+   "o": [
+    [
+     "Rappeler le client ou alerter le superviseur pour corriger, et le noter au dossier",
+     4
+    ],
+    [
+     "Ne rien faire : le client rappellera s’il y a un problème",
+     0
+    ],
+    [
+     "Noter l’erreur au dossier, sans prévenir personne",
+     1
+    ],
+    [
+     "Attendre la fin de la journée pour en parler",
+     1
+    ]
+   ]
+  },
+  {
+   "id": "F1",
+   "c": "F",
+   "lvl": "Simple",
+   "skill": "Orthographe d’une formule courante",
+   "t": "Choisissez la phrase correctement écrite.",
+   "o": [
+    [
+     "Nous vous remercions de votre appelle et restons a votre disposition.",
+     0
+    ],
+    [
+     "Nous vous remercion de votre appel et restons à votre disposition.",
+     0
+    ],
+    [
+     "Nous vous remercions de votre appel et restons à votre disposition.",
+     1
+    ],
+    [
+     "Nous vous remercions de votre appel et restont à votre disposition.",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "F2",
+   "c": "F",
+   "lvl": "Moyenne",
+   "skill": "Accord du participe passé",
+   "t": "Complétez : « Les documents que vous nous avez … sont complets. »",
+   "o": [
+    [
+     "envoyer",
+     0
+    ],
+    [
+     "envoyés",
+     1
+    ],
+    [
+     "envoyé",
+     0
+    ],
+    [
+     "envoyées",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "F3",
+   "c": "F",
+   "lvl": "Simple",
+   "skill": "Formule d’appel",
+   "t": "Quelle formule convient pour commencer un courriel à un client que vous ne connaissez pas ?",
+   "o": [
+    [
+     "Salut,",
+     0
+    ],
+    [
+     "Coucou,",
+     0
+    ],
+    [
+     "Cher ami,",
+     0
+    ],
+    [
+     "Madame, Monsieur,",
+     1
+    ]
+   ]
+  },
+  {
+   "id": "F4",
+   "c": "F",
+   "lvl": "Moyenne",
+   "skill": "Conjugaison au futur",
+   "t": "Complétez : « Dès que le service aura répondu, je vous … le dossier. »",
+   "o": [
+    [
+     "enverrai",
+     1
+    ],
+    [
+     "envoyerai",
+     0
+    ],
+    [
+     "enverrais",
+     0
+    ],
+    [
+     "enverrez",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "F5",
+   "c": "F",
+   "lvl": "Moyenne",
+   "skill": "Ton professionnel",
+   "t": "Quelle phrase annonce un retard de façon professionnelle ?",
+   "o": [
+    [
+     "Désolé, on est débordés en ce moment.",
+     0
+    ],
+    [
+     "Votre dossier est en retard, ce n’est pas de notre faute.",
+     0
+    ],
+    [
+     "Nous vous prions d’excuser ce retard : votre dossier sera traité sous 48 heures.",
+     1
+    ],
+    [
+     "Il faudra patienter, comme tout le monde.",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "F6",
+   "c": "F",
+   "lvl": "Moyenne",
+   "skill": "Accord avec le sujet",
+   "t": "Complétez : « Votre demande a bien été … en compte. »",
+   "o": [
+    [
+     "pris",
+     0
+    ],
+    [
+     "prit",
+     0
+    ],
+    [
+     "prises",
+     0
+    ],
+    [
+     "prise",
+     1
+    ]
+   ]
+  },
+  {
+   "id": "F7",
+   "c": "F",
+   "lvl": "Difficile",
+   "skill": "Homophones",
+   "t": "Complétez : « … la raison de votre appel, nous vous répondrons. »",
+   "o": [
+    [
+     "Quelque soit",
+     0
+    ],
+    [
+     "Quelle que soit",
+     1
+    ],
+    [
+     "Quel que soit",
+     0
+    ],
+    [
+     "Quelles que soit",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "L1",
+   "c": "L",
+   "lvl": "Simple",
+   "skill": "Calcul d’un rythme horaire",
+   "t": "Un conseiller traite 12 appels en 1 h 30. Combien d’appels par heure ?",
+   "o": [
+    [
+     "6",
+     0
+    ],
+    [
+     "8",
+     1
+    ],
+    [
+     "9",
+     0
+    ],
+    [
+     "18",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "L2",
+   "c": "L",
+   "lvl": "Simple",
+   "skill": "Proportionnalité",
+   "t": "Un conseiller traite 48 appels en 8 heures. Au même rythme, combien en 5 heures ?",
+   "o": [
+    [
+     "24",
+     0
+    ],
+    [
+     "40",
+     0
+    ],
+    [
+     "30",
+     1
+    ],
+    [
+     "35",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "L3",
+   "c": "L",
+   "lvl": "Simple",
+   "skill": "Calcul d’un taux",
+   "t": "Sur 200 appels, 150 sont résolus au premier appel. Quel est le taux de résolution ?",
+   "o": [
+    [
+     "75 %",
+     1
+    ],
+    [
+     "65 %",
+     0
+    ],
+    [
+     "50 %",
+     0
+    ],
+    [
+     "85 %",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "L4",
+   "c": "L",
+   "lvl": "Simple",
+   "skill": "Suite logique",
+   "t": "Quelle est la valeur suivante : 3, 6, 12, 24, … ?",
+   "o": [
+    [
+     "30",
+     0
+    ],
+    [
+     "36",
+     0
+    ],
+    [
+     "42",
+     0
+    ],
+    [
+     "48",
+     1
+    ]
+   ]
+  },
+  {
+   "id": "L5",
+   "c": "L",
+   "lvl": "Moyenne",
+   "skill": "Capacité de traitement",
+   "t": "Un appel dure 6 minutes en moyenne, suivies de 2 minutes de saisie. Combien d’appels complets en 2 heures ?",
+   "o": [
+    [
+     "12",
+     0
+    ],
+    [
+     "15",
+     1
+    ],
+    [
+     "20",
+     0
+    ],
+    [
+     "10",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "L6",
+   "c": "L",
+   "lvl": "Moyenne",
+   "skill": "Lecture d’un objectif",
+   "t": "L’objectif est de 90 % de clients satisfaits. Sur 60 clients interrogés, 51 sont satisfaits. L’objectif est-il atteint ?",
+   "o": [
+    [
+     "Oui, exactement 90 %",
+     0
+    ],
+    [
+     "Oui, 95 %",
+     0
+    ],
+    [
+     "Non, 85 %",
+     1
+    ],
+    [
+     "Non, 80 %",
+     0
+    ]
+   ]
+  },
+  {
+   "id": "L7",
+   "c": "L",
+   "lvl": "Moyenne",
+   "skill": "Dimensionnement d’équipe",
+   "t": "Une équipe de 5 conseillers traite 400 appels par jour. Avec 2 conseillers de plus, au même rythme, combien d’appels par jour ?",
+   "o": [
+    [
+     "480",
+     0
+    ],
+    [
+     "520",
+     0
+    ],
+    [
+     "600",
+     0
+    ],
+    [
+     "560",
+     1
+    ]
+   ]
+  },
+  {
+   "id": "L8",
+   "c": "L",
+   "lvl": "Difficile",
+   "skill": "Variation en pourcentage",
+   "t": "Le temps d’attente moyen passe de 40 à 30 secondes. De combien a-t-il baissé ?",
+   "o": [
+    [
+     "25 %",
+     1
+    ],
+    [
+     "10 %",
+     0
+    ],
+    [
+     "30 %",
+     0
+    ],
+    [
+     "33 %",
+     0
+    ]
+   ]
+  }
+ ]
+}

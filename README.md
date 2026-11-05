@@ -1,19 +1,15 @@
-# Genius Recrutement : version de test
+# Genius Recrutement — version 1
 
-Version d'essai en ligne sur https://recrutement.alveris-consulting.com, sur le VPS LWS qui héberge aussi le CRM.
+En ligne sur https://recrutement.alveris-consulting.com, sur le VPS LWS qui héberge aussi le CRM.
 
-## Mise en ligne sur le VPS
+- `/` : page d'accueil ; `/app` : espace recruteur (comptes entreprise) ; `/t/<lien>` : test du candidat ; `/essai/` : ancienne version d'essai complète (données dans le navigateur).
+- Application Node 22 (`app/`), base SQLite dans le volume Docker `genius-recrutement-data` (sauvegarde quotidienne automatique dans `/data/backups`, 14 jours conservés).
+- E-mails : à régler par le propriétaire dans « Mon compte » (service SMTP, par exemple Brevo). Tant que ce n'est pas fait, les messages sont préparés mais ne partent pas, et les recruteurs copient les liens eux-mêmes.
+
+## Installer ou mettre à jour sur le VPS
 
 ```sh
-cd
-git clone https://github.com/consultingalveris-hash/genius-recrutement
-bash genius-recrutement/installer
+cd ~/genius-recrutement && git pull && bash installer
 ```
 
-Le script lance un petit conteneur qui sert la page, puis ajoute un bloc au Caddyfile du CRM (sauvegarde automatique, validation avant rechargement, retour arrière en cas d'erreur). Le CRM n'est pas redémarré.
-
-Mise à jour de la page : `cd ~/genius-recrutement && git pull` (rien d'autre à faire).
-
-## Limite de cette version
-
-Toutes les données restent dans le navigateur de chaque testeur ; aucun e-mail ne part. La version 1, avec comptes et base de données partagée, remplacera cette page.
+Le script construit l'application, la lance à côté du CRM et ajoute (ou met à jour) le bloc du sous-domaine dans le Caddyfile du CRM, avec sauvegarde, validation et retour arrière automatique. Le CRM n'est pas redémarré.

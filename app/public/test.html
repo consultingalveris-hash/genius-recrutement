@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Test de recrutement</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/style.css">
+<style>
+.shell{max-width:620px;margin:auto;padding:24px 16px 48px}
+.opt{display:block;width:100%;text-align:left;border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:14px 16px;margin-top:10px;cursor:pointer;font-size:15px;line-height:1.4}
+.opt:hover{border-color:var(--accent)}
+.opt.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-soft-fg);font-weight:600}
+.opt[disabled]{cursor:default;opacity:.7}
+.timer{font-variant-numeric:tabular-nums;font-weight:800;font-size:15px;padding:5px 12px;border-radius:99px;background:var(--info-bg);color:var(--info-fg)}
+.timer.low{background:var(--warn-bg);color:var(--warn-fg)}
+.qtext{font-size:19px;font-weight:700;margin:18px 0 6px;line-height:1.35}
+.foot{display:flex;justify-content:space-between;gap:12px;margin-top:22px}
+</style>
+</head>
+<body>
+<main class="shell" id="app"><p class="muted">Chargement du test…</p></main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script>
+(function(){
+'use strict';
+var TOKEN=location.pathname.split('/').pop(), app=document.getElementById('app'), S=null, L={i:0,spent:{}}, tick=null, lastBeat=0, ending=false;
+var LKEY='gr-test-'+TOKEN;
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function save(){try{localStorage.setItem(LKEY,JSON.stringify(L));}catch(e){}}
+function load(){try{var x=JSON.parse(localStorage.getItem(LKEY)||'null');if(x&&x.spent)L=x;}catch(e){}}
+function api(method,url,body){return fetch(url,{method:method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined}).then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(j.error||'Erreur, réessayez.');return j;});});}
+var toastT;function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(function(){t.classList.remove('on');},3500);}
+function head(){return '<div class="row" style="margin-bottom:20px;gap:10px"><span class="logo" style="width:30px;height:30px;border-radius:8px;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg></span><b>'+esc(S?S.company:'Genius Recrutement')+'</b></div>';}
+
+function welcome(){
+  var mins=Math.ceil(S.count*S.perQ/60);
+  if(S.expired){app.innerHTML=head()+'<div class="card col"><h1 style="font-size:24px">Ce test n’est plus disponible</h1><p class="muted">La date limite fixée par '+esc(S.company)+' est passée. Si vous pensez qu’il s’agit d’une erreur, répondez directement à l’e-mail d’invitation.</p></div>';return;}
+  app.innerHTML=head()+'<div class="card col"><div><p class="small muted">Bonjour '+esc(S.name)+',</p><h1 style="font-size:24px;margin-top:4px">Test pour le poste : '+esc(S.title)+'</h1></div>'+
+  '<ul class="steps"><li><span><b>'+S.count+' questions</b> à choix multiple, une seule bonne réponse à chaque fois.</span></li>'+
+  '<li><span><b>'+S.perQ+' secondes par question</b>, soit '+mins+' minutes environ. À la fin du temps, la question suivante s’affiche toute seule.</span></li>'+
+  (S.back?'<li><span>Vous pouvez <b>revenir à la question précédente</b> tant qu’il vous reste du temps pour elle.</span></li>':'<li><span>Une fois validée, une question ne peut plus être modifiée.</span></li>')+
+  '<li><span><b>Restez sur cette page</b> jusqu’à la fin : chaque sortie (autre onglet, autre application) est signalée au recruteur.</span></li>'+
+  '<li><span>Une fois commencé, le test se fait d’une traite. Si la connexion coupe, rouvrez le même lien pour reprendre.</span></li></ul>'+
+  (S.deadline?'<p class="small muted">À passer avant le '+new Date(S.deadline+'T12:00').toLocaleDateString('fr-FR')+'.</p>':'')+
+  '<label class="check"><input type="checkbox" id="consent"><span>J’accepte que mes réponses et mon résultat soient transmis à '+esc(S.company)+' pour l’examen de ma candidature.</span></label>'+
+  '<p class="err" id="err" hidden></p><button class="btn primary block" id="go" disabled>Commencer le test</button></div>';
+  var c=document.getElementById('consent'),go=document.getElementById('go');
+  c.addEventListener('change',function(){go.disabled=!c.checked;});
+  go.addEventListener('click',function(){go.disabled=true;go.textContent='Un instant…';api('POST','/api/c/'+TOKEN+'/start',{consent:true}).then(function(r){S=r;L={i:0,spent:{}};save();runTest();}).catch(function(e){var er=document.getElementById('err');er.textContent=e.message;er.hidden=false;go.disabled=false;go.textContent='Commencer le test';});});
+}
+function thanks(){
+  clearInterval(tick);try{localStorage.removeItem(LKEY);}catch(e){}
+  app.innerHTML=head()+'<div class="card col" style="text-align:center;padding:36px 24px"><div style="font-size:42px">✓</div><h1 style="font-size:24px">Merci, c’est terminé</h1><p class="muted">Vos réponses ont bien été transmises à '+esc(S.company)+'. Le recruteur reviendra vers vous. Vous pouvez fermer cette page.</p></div>';
+}
+function left(q){return Math.max(0,S.perQ-(L.spent[q.id]||0));}
+function totalLeft(){return S.limit-S.elapsed-Math.round((Date.now()-S.loadedAt)/1000);}
+function runTest(){
+  S.loadedAt=Date.now();load();
+  if(L.i>=S.questions.length)L.i=S.questions.length-1;
+  // On reprend à la première question où il reste du temps.
+  while(L.i<S.questions.length-1&&left(S.questions[L.i])<=0)L.i++;
+  document.addEventListener('visibilitychange',function(){if(document.hidden&&!ending)navigator.sendBeacon?navigator.sendBeacon('/api/c/'+TOKEN+'/exit',new Blob(['{}'],{type:'application/json'})):api('POST','/api/c/'+TOKEN+'/exit',{});});
+  window.addEventListener('beforeunload',function(e){if(!ending){e.preventDefault();e.returnValue='';}});
+  lastBeat=Date.now();clearInterval(tick);tick=setInterval(beat,250);draw();
+}
+function beat(){
+  var t=Date.now(),dt=(t-lastBeat)/1000;lastBeat=t;
+  var q=S.questions[L.i];L.spent[q.id]=(L.spent[q.id]||0)+dt;
+  if(totalLeft()<=0){finish(true);return;}
+  if(left(q)<=0){save();if(L.i<S.questions.length-1){L.i++;save();draw();}else finish(false);return;}
+  var tm=document.getElementById('tm');if(tm){var s=Math.ceil(left(q));tm.textContent=s+' s';tm.className='timer'+(s<=5?' low':'');}
+  if(Math.random()<.1)save();
+}
+function draw(){
+  var q=S.questions[L.i],n=S.questions.length,ans=S.answers[q.id];
+  var prev=L.i>0?S.questions[L.i-1]:null,canBack=S.back&&prev&&left(prev)>0;
+  app.innerHTML=head()+'<div class="card">'+
+  '<div class="row between small muted"><span>Question '+(L.i+1)+' sur '+n+'</span><span class="timer" id="tm" aria-live="off">'+Math.ceil(left(q))+' s</span></div>'+
+  '<div class="bar" style="margin-top:10px" aria-hidden="true"><i style="width:'+Math.round(100*L.i/n)+'%"></i></div>'+
+  '<p class="small muted" style="margin-top:16px">'+esc(q.skill)+'</p><p class="qtext">'+esc(q.text)+'</p>'+
+  '<div role="radiogroup">'+q.options.map(function(o,k){return '<button class="opt'+(ans===k?' sel':'')+'" role="radio" aria-checked="'+(ans===k)+'" data-k="'+k+'">'+esc(o)+'</button>';}).join('')+'</div>'+
+  '<div class="foot"><button class="btn" id="prev"'+(canBack?'':' disabled')+(S.back?'':' hidden')+'>← Précédente</button>'+
+  '<button class="btn primary" id="next">'+(L.i<n-1?'Suivante →':'Terminer le test')+'</button></div></div>'+
+  '<p class="small muted" style="text-align:center;margin-top:14px">Temps total restant : environ '+Math.max(1,Math.ceil(totalLeft()/60))+' min</p>';
+  Array.prototype.forEach.call(document.querySelectorAll('.opt'),function(b){b.addEventListener('click',function(){
+    var k=+b.dataset.k;S.answers[q.id]=k;draw();
+    api('POST','/api/c/'+TOKEN+'/answer',{id:q.id,answer:k}).catch(function(e){toast(e.message.indexOf('terminé')>=0?e.message:'Connexion instable : votre réponse sera renvoyée.');setTimeout(function(){api('POST','/api/c/'+TOKEN+'/answer',{id:q.id,answer:S.answers[q.id]}).catch(function(){});},2000);});
+  });});
+  document.getElementById('prev').addEventListener('click',function(){if(canBack){L.i--;save();draw();}});
+  document.getElementById('next').addEventListener('click',function(){
+    if(!S.back)L.spent[q.id]=S.perQ; // sans retour arrière, la question est close
+    if(L.i<n-1){L.i++;save();draw();}else confirmEnd();
+  });
+}
+function confirmEnd(){
+  var miss=S.questions.filter(function(q){return S.answers[q.id]==null;}).length;
+  if(miss&&!confirm('Il reste '+miss+' question'+(miss>1?'s':'')+' sans réponse. Terminer quand même ?'))return;
+  finish(false);
+}
+function finish(){
+  if(ending)return;ending=true;clearInterval(tick);
+  app.innerHTML=head()+'<div class="card"><p class="muted">Envoi de vos réponses…</p></div>';
+  var tries=0;(function send(){api('POST','/api/c/'+TOKEN+'/finish',{}).then(thanks).catch(function(){if(++tries<5)setTimeout(send,2000);else app.innerHTML=head()+'<div class="card"><p class="note warn">La connexion a coupé. Vos réponses déjà données sont enregistrées. Rouvrez ce lien dans un instant pour terminer.</p></div>';});})();
+}
+api('GET','/api/c/'+TOKEN).then(function(r){
+  S=r;document.title=r.company+' — test de recrutement';
+  if(r.status==='termine')return thanks();
+  if(r.status==='en_cours')return runTest();
+  welcome();
+}).catch(function(e){app.innerHTML='<div class="card"><h1 style="font-size:22px">Lien introuvable</h1><p class="muted" style="margin-top:8px">'+esc(e.message)+' Vérifiez que vous avez copié le lien en entier.</p></div>';});
+})();
+</script>
+</body>
+</html>

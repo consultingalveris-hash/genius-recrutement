@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Installe le site de test Genius Recrutement à côté du CRM, sans toucher au CRM lui-même :
-# un petit conteneur sert la page, et le Caddy du CRM (déjà sur les ports 80/443)
+# Installe (ou met à jour) Genius Recrutement v1 à côté du CRM, sans redémarrer le CRM :
+# un conteneur fait tourner l'application, et le Caddy du CRM (déjà sur les ports 80/443)
 # reçoit un bloc pour recrutement.alveris-consulting.com.
+# Usage : cd ~/genius-recrutement && git pull && bash installer
 set -euo pipefail
 DOMAINE=recrutement.alveris-consulting.com
-SITE_NOM=genius-recrutement-site
+APP=genius-recrutement-app
+ANCIEN=genius-recrutement-site
+VOLUME=genius-recrutement-data
+PROPRIETAIRE=consultingalveris@gmail.com
 DOSSIER="$(cd "$(dirname "$0")" && pwd)"
 
-# Le serveur n'avait plus de serveur DNS : on en fixe deux, de façon durable.
+# DNS du serveur : fixés de façon durable (le serveur n'en avait plus).
 if [ ! -f /etc/systemd/resolved.conf.d/dns-public.conf ]; then
   mkdir -p /etc/systemd/resolved.conf.d
   printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\nFallbackDNS=9.9.9.9\n' > /etc/systemd/resolved.conf.d/dns-public.conf
@@ -15,34 +19,39 @@ if [ ! -f /etc/systemd/resolved.conf.d/dns-public.conf ]; then
   sleep 2
   echo "DNS du serveur fixés (1.1.1.1, 8.8.8.8)."
 fi
-getent hosts acme-v02.api.letsencrypt.org >/dev/null || { echo "ERREUR : le serveur ne trouve toujours pas les adresses internet."; exit 1; }
+getent hosts registry.npmjs.org >/dev/null || { echo "ERREUR : le serveur ne trouve pas les adresses internet."; exit 1; }
 
 C=$(docker ps --format '{{.Names}}' | grep -E 'caddy' | head -n1 || true)
 [ -n "$C" ] || { echo "ERREUR : conteneur Caddy du CRM introuvable."; exit 1; }
-echo "Caddy du CRM : $C"
-
 CF=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$C")
 if [ -z "$CF" ]; then
   D=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy"}}{{.Source}}{{end}}{{end}}' "$C")
   [ -n "$D" ] && CF="$D/Caddyfile"
 fi
 [ -n "$CF" ] && [ -f "$CF" ] || { echo "ERREUR : Caddyfile du CRM introuvable."; exit 1; }
-echo "Caddyfile : $CF"
-
 NET=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' "$C" | head -n1)
-echo "Réseau : $NET"
+echo "Caddy du CRM : $C — réseau : $NET"
 
-docker rm -f "$SITE_NOM" >/dev/null 2>&1 || true
-docker run -d --name "$SITE_NOM" --restart unless-stopped --network "$NET" \
-  -v "$DOSSIER/site/recrutement:/usr/share/caddy:ro" caddy:2.8.4-alpine >/dev/null
-echo "Conteneur du site lancé."
+echo "Construction de l'application (une à deux minutes la première fois)…"
+docker build -q -t "$APP:latest" "$DOSSIER/app" >/dev/null
+docker volume create "$VOLUME" >/dev/null
+docker rm -f "$APP" >/dev/null 2>&1 || true
+docker run -d --name "$APP" --restart unless-stopped --network "$NET" \
+  -v "$VOLUME:/data" \
+  -e BASE_URL="https://$DOMAINE" -e SUPERADMIN_EMAIL="$PROPRIETAIRE" \
+  "$APP:latest" >/dev/null
+sleep 3
+docker exec "$APP" node -e "fetch('http://localhost:3000/api/meta').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" \
+  || { echo "ERREUR : l'application ne démarre pas. Journal :"; docker logs --tail 30 "$APP"; exit 1; }
+echo "Application lancée."
 
+SAUVE="$CF.avant-genius-$(date +%Y%m%d-%H%M%S)"
+cp -p "$CF" "$SAUVE"
 if grep -q "$DOMAINE" "$CF"; then
-  echo "Bloc déjà présent dans le Caddyfile."
+  # Le bloc existe (version d'essai) : on pointe vers l'application. Écriture sur place pour garder le même fichier.
+  NOUVEAU=$(sed "s#reverse_proxy $ANCIEN:80#reverse_proxy $APP:3000#" "$CF")
+  printf '%s\n' "$NOUVEAU" > "$CF"
 else
-  SAUVE="$CF.avant-genius-$(date +%Y%m%d-%H%M%S)"
-  cp -p "$CF" "$SAUVE"
-  echo "Sauvegarde : $SAUVE"
   cat >> "$CF" <<BLOC
 
 $DOMAINE {
@@ -54,16 +63,16 @@ $DOMAINE {
 		X-Robots-Tag "noindex, nofollow"
 		-Server
 	}
-	reverse_proxy $SITE_NOM:80
+	reverse_proxy $APP:3000
 }
 BLOC
-  if ! docker exec "$C" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
-    cat "$SAUVE" > "$CF"
-    echo "ERREUR : configuration refusée, le Caddyfile du CRM a été remis comme avant."
-    exit 1
-  fi
 fi
-
-docker exec "$C" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+if ! docker exec "$C" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+  cat "$SAUVE" > "$CF"
+  echo "ERREUR : configuration refusée, le Caddyfile du CRM a été remis comme avant."
+  exit 1
+fi
+docker exec "$C" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1
+docker rm -f "$ANCIEN" >/dev/null 2>&1 || true
 echo
-echo "TERMINE : https://$DOMAINE (le certificat HTTPS peut prendre une minute)."
+echo "TERMINE : https://$DOMAINE"
