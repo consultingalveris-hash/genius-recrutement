@@ -707,18 +707,44 @@ async function inviteFromApplication(app, o, cu) {
 on('POST', '/api/offers/:id/apply', withCand(async (req, res, { cu, params, body }) => {
   const o = q1(`SELECT o.*, c.name AS company, c.status AS cstatus FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=?`, +params.id);
   if (!o || offerStatus(o) !== 'ouverte' || o.cstatus !== 'valide') return fail(res, 404, 'Cette offre n’est plus ouverte.');
-  if (!cu.verified) return fail(res, 403, 'Confirmez d’abord votre adresse e-mail : cliquez sur le lien reçu à l’inscription (pensez aux courriers indésirables).');
   if (q1(`SELECT id FROM applications WHERE offer_id=? AND cu_id=?`, o.id, cu.id)) return fail(res, 409, 'Vous avez déjà postulé à cette offre.');
   const id = run(`INSERT INTO applications(offer_id,cu_id,message,created_at) VALUES(?,?,?,?)`, o.id, cu.id, clean(body.message, 1500), now()).lastInsertRowid;
-  const app = q1(`SELECT * FROM applications WHERE id=?`, id);
+  if (!cu.verified) { run(`UPDATE applications SET status='attente' WHERE id=?`, id); return send(res, 200, { ok: true, pending: true }); }
+  const tested = await releaseApp(q1(`SELECT * FROM applications WHERE id=?`, id), o, cu);
+  send(res, 200, { ok: true, testSent: !!tested, link: tested ? `/t/${tested.token}` : null });
+}));
+// Transmet une candidature à l'entreprise : test envoyé si l'offre en a un, puis avis au recruteur.
+async function releaseApp(app, o, cu) {
   let tested = null;
-  if (o.test_id && o.auto_test && cu.family && cu.family === o.family) tested = await inviteFromApplication(app, o, cu);
+  if (o.test_id && o.auto_test) tested = await inviteFromApplication(app, o, cu);
   const t = o.test_id ? q1(`SELECT reply_email FROM tests WHERE id=?`, o.test_id) : null;
   const to = t?.reply_email || q1(`SELECT email FROM users WHERE company_id=? ORDER BY id LIMIT 1`, o.company_id)?.email;
   if (to) sendMail({ to, companyId: o.company_id, subject: `Nouvelle candidature : ${cu.name} — ${o.title}`, html: mailLayout('Nouvelle candidature',
-    `<p><b>${esc(cu.name)}</b> a postulé à l’offre <b>${esc(o.title)}</b>.${tested ? '<br>Son profil correspond au métier : le test lui a été envoyé automatiquement.' : ''}</p>${button(`${BASE_URL}/app#/offres/${o.id}`, 'Voir la candidature')}`, o.company_id) });
-  send(res, 200, { ok: true, testSent: !!tested, link: tested ? `/t/${tested.token}` : null });
-}));
+    `<p><b>${esc(cu.name)}</b> a postulé à l’offre <b>${esc(o.title)}</b>.${tested ? '<br>Le test lui a été envoyé automatiquement.' : ''}</p>${button(`${BASE_URL}/app#/offres/${o.id}`, 'Voir la candidature')}`, o.company_id) });
+  return tested;
+}
+// Candidatures en attente de confirmation de l'adresse : transmises au clic sur le lien.
+async function releasePending(cuId) {
+  const cu = q1(`SELECT * FROM cusers WHERE id=?`, cuId); if (!cu) return;
+  for (const a of qa(`SELECT * FROM applications WHERE cu_id=? AND status='attente'`, cuId)) {
+    const o = q1(`SELECT o.*, c.name AS company, c.status AS cstatus FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=?`, a.offer_id);
+    run(`UPDATE applications SET status='recue', created_at=? WHERE id=?`, now(), a.id);
+    if (o) await releaseApp(q1(`SELECT * FROM applications WHERE id=?`, a.id), o, cu);
+  }
+}
+// Rappel unique, environ un jour après, aux candidats qui n'ont pas confirmé leur adresse.
+try { db.exec(`ALTER TABLE cusers ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0`); } catch {}
+async function remindUnverified() {
+  if (!getTransport()) return;
+  for (const cu of qa(`SELECT * FROM cusers WHERE verified=0 AND reminded=0 AND created_at < ?`, now() - 20 * 3600_000)) {
+    run(`UPDATE cusers SET reminded=1 WHERE id=?`, cu.id);
+    const n = q1(`SELECT COUNT(*) n FROM applications WHERE cu_id=? AND status='attente'`, cu.id).n;
+    const tok = rnd(32); run(`INSERT INTO verifs(token,kind,ref_id,expires) VALUES(?,?,?,?)`, sha(tok), 'cand', cu.id, now() + 3 * 864e5);
+    await sendMail({ to: cu.email, subject: n ? 'Votre candidature attend votre confirmation' : 'Confirmez votre adresse e-mail', html: mailLayout(n ? 'Votre candidature n’est pas encore transmise' : 'Confirmez votre adresse e-mail',
+      `<p>Bonjour ${esc(cu.name)},</p><p>${n ? `Vous avez postulé à ${n > 1 ? n + ' offres' : 'une offre'}, mais votre adresse e-mail n’est pas encore confirmée : l’entreprise n’a donc rien reçu.` : 'Votre adresse e-mail n’est pas encore confirmée.'} Cliquez sur le bouton pour la confirmer${n ? ' : votre candidature partira aussitôt' : ''}.</p>${button(`${BASE_URL}/verifier/${tok}`, 'Confirmer mon adresse')}`) });
+  }
+}
+setTimeout(remindUnverified, 120_000); setInterval(remindUnverified, 3600_000);
 on('GET', '/api/cand/applications', withCand(async (req, res, { cu }) => {
   const rows = qa(`SELECT a.*, o.title, o.city, o.contract, o.family, o.status AS ostatus, o.closes_at, c.name AS company, c.logo_v, o.company_id,
     k.status AS tstatus, k.token FROM applications a JOIN offers o ON o.id=a.offer_id JOIN companies c ON c.id=o.company_id
@@ -759,7 +785,7 @@ async function announcePending(companyId) {
   return n;
 }
 on('GET', '/api/rh/offers', async (req, res, { user }) => {
-  const rows = qa(`SELECT o.*, (SELECT COUNT(*) FROM applications a WHERE a.offer_id=o.id) AS n FROM offers o WHERE o.company_id=? ORDER BY o.created_at DESC`, user.company_id);
+  const rows = qa(`SELECT o.*, (SELECT COUNT(*) FROM applications a WHERE a.offer_id=o.id AND a.status!='attente') AS n FROM offers o WHERE o.company_id=? ORDER BY o.created_at DESC`, user.company_id);
   send(res, 200, { offers: rows.map(o => ({ ...offerOut(o), testId: o.test_id, autoTest: !!o.auto_test, applications: o.n })), contracts: CONTRACTS });
 }, { auth: true });
 on('POST', '/api/rh/offers', async (req, res, { user, body }) => {
@@ -785,7 +811,7 @@ on('GET', '/api/rh/offers/:id', async (req, res, { user, params }) => {
   const o = ownOffer(user, params.id); if (!o) return fail(res, 404, 'Offre introuvable.');
   const apps = qa(`SELECT a.*, u.name, u.email, u.phone, u.city, u.family, u.headline, u.cv_name, u.photo IS NOT NULL AS hasphoto, u.cv_at,
     k.status AS tstatus, k.global, k.scores, k.secs, k.token FROM applications a JOIN cusers u ON u.id=a.cu_id LEFT JOIN candidates k ON k.id=a.candidate_id
-    WHERE a.offer_id=? ORDER BY (k.global IS NULL), k.global DESC, a.created_at DESC`, o.id);
+    WHERE a.offer_id=? AND a.status!='attente' ORDER BY (k.global IS NULL), k.global DESC, a.created_at DESC`, o.id);
   send(res, 200, { offer: { ...offerOut(o), testId: o.test_id, autoTest: !!o.auto_test }, applications: apps.map(a => ({ id: a.id, name: a.name, email: a.email, phone: a.phone || '',
     city: a.city || '', familyName: famName(a.family), headline: a.headline || '', message: a.message || '', status: a.status, createdAt: a.created_at,
     photo: a.hasphoto ? `/api/rh/applications/${a.id}/photo` : null, cv: a.cv_name ? `/api/rh/applications/${a.id}/cv` : null,
@@ -832,15 +858,15 @@ on('GET', '/api/rh/dashboard', async (req, res, { user }) => {
   const cid = user.company_id, week = now() - 7 * 864e5;
   const k = {
     offers: q1(`SELECT COUNT(*) n FROM offers WHERE company_id=? AND status='ouverte'`, cid).n,
-    apps: q1(`SELECT COUNT(*) n FROM applications a JOIN offers o ON o.id=a.offer_id WHERE o.company_id=?`, cid).n,
-    appsWeek: q1(`SELECT COUNT(*) n FROM applications a JOIN offers o ON o.id=a.offer_id WHERE o.company_id=? AND a.created_at>?`, cid, week).n,
+    apps: q1(`SELECT COUNT(*) n FROM applications a JOIN offers o ON o.id=a.offer_id WHERE o.company_id=? AND a.status!='attente'`, cid).n,
+    appsWeek: q1(`SELECT COUNT(*) n FROM applications a JOIN offers o ON o.id=a.offer_id WHERE o.company_id=? AND a.status!='attente' AND a.created_at>?`, cid, week).n,
     tests: q1(`SELECT COUNT(*) n FROM tests WHERE company_id=? AND archived=0`, cid).n,
     done: q1(`SELECT COUNT(*) n FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.status='termine'`, cid).n,
     avg: q1(`SELECT ROUND(AVG(c.global)) a FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.status='termine'`, cid).a
   };
   const latest = qa(`SELECT a.id, a.status, a.created_at, a.offer_id, o.title, u.name, u.photo IS NOT NULL AS hasphoto, k.global, k.status AS tstatus
     FROM applications a JOIN offers o ON o.id=a.offer_id JOIN cusers u ON u.id=a.cu_id LEFT JOIN candidates k ON k.id=a.candidate_id
-    WHERE o.company_id=? ORDER BY a.created_at DESC LIMIT 6`, cid).map(a => ({ id: a.id, offerId: a.offer_id, title: a.title, name: a.name, status: a.status, createdAt: a.created_at,
+    WHERE o.company_id=? AND a.status!='attente' ORDER BY a.created_at DESC LIMIT 6`, cid).map(a => ({ id: a.id, offerId: a.offer_id, title: a.title, name: a.name, status: a.status, createdAt: a.created_at,
       photo: a.hasphoto ? `/api/rh/applications/${a.id}/photo` : null, score: a.tstatus === 'termine' ? a.global : null }));
   const results = qa(`SELECT c.id, c.name, c.global, c.ended_at, c.test_id, t.title FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.status='termine' ORDER BY c.ended_at DESC LIMIT 5`, cid);
   send(res, 200, { k, latest, results });
@@ -851,7 +877,7 @@ function consumeVerify(tok) {
   const v = q1(`SELECT * FROM verifs WHERE token=? AND expires>?`, sha(String(tok)), now()); if (!v) return null;
   run(`DELETE FROM verifs WHERE token=?`, v.token);
   if (v.kind === 'user') { run(`UPDATE users SET verified=1 WHERE id=?`, v.ref_id); const u = q1(`SELECT company_id FROM users WHERE id=?`, v.ref_id); if (u) announcePending(u.company_id); }
-  else run(`UPDATE cusers SET verified=1 WHERE id=?`, v.ref_id);
+  else { run(`UPDATE cusers SET verified=1 WHERE id=?`, v.ref_id); releasePending(v.ref_id); }
   return v.kind;
 }
 on('POST', '/api/verify/resend', async (req, res, { user }) => {
@@ -881,7 +907,7 @@ on('GET', '/api/admin/companies', superOnly(async (req, res) => {
 }), { auth: true });
 on('POST', '/api/admin/cand-verify', superOnly(async (req, res, { body }) => {
   const cu = q1(`SELECT * FROM cusers WHERE email=?`, clean(body.email, 200).toLowerCase()); if (!cu) return fail(res, 404, 'Candidat introuvable.');
-  if (body.confirm) { run(`UPDATE cusers SET verified=1 WHERE id=?`, cu.id); return send(res, 200, { ok: true }); }
+  if (body.confirm) { run(`UPDATE cusers SET verified=1 WHERE id=?`, cu.id); await releasePending(cu.id); return send(res, 200, { ok: true }); }
   const r = await sendVerify('cand', cu.id, cu.email, cu.name); send(res, 200, { ok: true, sent: !!r.sent });
 }), { auth: true });
 on('PUT', '/api/admin/companies/:id', superOnly(async (req, res, { params, body }) => {
