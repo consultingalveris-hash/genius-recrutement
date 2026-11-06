@@ -1,7 +1,7 @@
 // Illustrations originales de Genius Recrutement (SVG), partagées par toutes les pages.
 // window.GR.person(kind, size), GR.famIcon(k), GR.pattern(id), GR.empty(kind)
 (function () {
-  var C = { teal: '#0B6E66', tealD: '#084F49', indigo: '#25306B', mango: '#F2A541', mangoD: '#D9862A', leaf: '#5FB49C', sky: '#BFE3DC', skin1: '#6B3E26', skin2: '#8D5A3B', skin3: '#4A2A1A', hair: '#1A1210', white: '#FFFFFF' };
+  var C = { teal: '#0E7C86', tealD: '#084F49', indigo: '#25306B', mango: '#F2A541', mangoD: '#D9862A', leaf: '#5FB49C', sky: '#BFE3DC', skin1: '#6B3E26', skin2: '#8D5A3B', skin3: '#4A2A1A', hair: '#1A1210', white: '#FFFFFF' };
   function person(kind, size) {
     size = size || 160;
     var s = {

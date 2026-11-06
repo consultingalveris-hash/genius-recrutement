@@ -187,7 +187,7 @@ V.test=function(id){var rt=ROUTE;
     });
   }).catch(handle);
 };
-var AV=['#0B6E66','#1D4F91','#8A4B00','#6B3FA0','#A1281C','#11683A','#33404F'];
+var AV=['#0E7C86','#1D4F91','#8A4B00','#6B3FA0','#A1281C','#11683A','#33404F'];
 function avatar(name){var p=String(name||'?').trim().split(/\s+/),ini=((p[0]||'?')[0]+(p.length>1?p[p.length-1][0]:'')).toUpperCase(),h=0;for(var i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;
   return '<span aria-hidden="true" style="flex:none;width:34px;height:34px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-fg);display:grid;place-items:center;font-weight:700;font-size:13px">'+esc(ini)+'</span>';}
 function copyText(s){

@@ -79,10 +79,10 @@ const logoUrl = companyId => { const r = q1(`SELECT logo_v FROM companies WHERE 
 function mailLayout(title, inner, companyId = null) {
   const lg = companyId ? logoUrl(companyId) : null;
   return `<div style="font-family:Arial,Helvetica,sans-serif;background:#F4F6F8;padding:24px"><div style="max-width:560px;margin:auto;background:#fff;border:1px solid #DDE2E8;border-radius:12px;padding:28px;color:#0F1B2D;font-size:15px;line-height:1.5">
-${lg ? `<img src="${esc(lg)}" alt="" style="max-height:56px;max-width:220px;display:block;margin-bottom:18px">` : '<div style="font-weight:700;color:#0B6E66;margin-bottom:16px">Genius Recrutement</div>'}<h1 style="font-size:20px;margin:0 0 12px">${esc(title)}</h1>${inner}
+${lg ? `<img src="${esc(lg)}" alt="" style="max-height:56px;max-width:220px;display:block;margin-bottom:18px">` : '<div style="font-weight:700;color:#0E7C86;margin-bottom:16px">Genius Recrutement</div>'}<h1 style="font-size:20px;margin:0 0 12px">${esc(title)}</h1>${inner}
 <p style="color:#4A5565;font-size:12px;margin-top:28px">Message envoyé automatiquement par Genius Recrutement.</p></div></div>`;
 }
-const button = (url, label) => `<p style="margin:22px 0"><a href="${esc(url)}" style="background:#0B6E66;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;display:inline-block">${esc(label)}</a></p><p style="font-size:12px;color:#4A5565">Si le bouton ne marche pas, copiez ce lien : ${esc(url)}</p>`;
+const button = (url, label) => `<p style="margin:22px 0"><a href="${esc(url)}" style="background:#0E7C86;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;display:inline-block">${esc(label)}</a></p><p style="font-size:12px;color:#4A5565">Si le bouton ne marche pas, copiez ce lien : ${esc(url)}</p>`;
 async function sendMail({ to, subject, html, companyId = null, replyTo, attachments }) {
   const tr = getTransport();
   const id = run(`INSERT INTO outbox(company_id,recipient,subject,body,status,created_at) VALUES(?,?,?,?,?,?)`,
