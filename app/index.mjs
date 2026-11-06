@@ -873,7 +873,16 @@ on('GET', '/api/admin/companies', superOnly(async (req, res) => {
     FROM companies c ORDER BY CASE c.status WHEN 'en_attente' THEN 0 WHEN 'suspendue' THEN 1 ELSE 2 END, c.created_at DESC`);
   const stats = { companies: rows.length, pending: rows.filter(r => r.status === 'en_attente').length,
     candidates: q1(`SELECT COUNT(*) n FROM cusers`).n, offers: q1(`SELECT COUNT(*) n FROM offers WHERE status='ouverte'`).n, applications: q1(`SELECT COUNT(*) n FROM applications`).n };
-  send(res, 200, { companies: rows.map(r => ({ id: r.id, name: r.name, status: r.status, createdAt: r.created_at, user: r.uname, email: r.uemail, verified: !!r.uverified, offers: r.offers, tests: r.tests })), stats });
+  stats.unverified = q1(`SELECT COUNT(*) n FROM cusers WHERE verified=0`).n;
+  const cands = qa(`SELECT u.id,u.name,u.email,u.family,u.verified,u.created_at,u.cv_name,(SELECT COUNT(*) FROM applications a WHERE a.cu_id=u.id) AS apps FROM cusers u ORDER BY u.created_at DESC LIMIT 100`)
+    .map(u => ({ name: u.name, email: u.email, family: (FAMILIES.find(f => f.k === u.family) || {}).name || '', verified: !!u.verified, createdAt: u.created_at, cv: !!u.cv_name, apps: u.apps }));
+  const mails = qa(`SELECT recipient,subject,status,error,created_at FROM outbox WHERE company_id IS NULL ORDER BY id DESC LIMIT 30`);
+  send(res, 200, { companies: rows.map(r => ({ id: r.id, name: r.name, status: r.status, createdAt: r.created_at, user: r.uname, email: r.uemail, verified: !!r.uverified, offers: r.offers, tests: r.tests })), stats, candidates: cands, mails });
+}), { auth: true });
+on('POST', '/api/admin/cand-verify', superOnly(async (req, res, { body }) => {
+  const cu = q1(`SELECT * FROM cusers WHERE email=?`, clean(body.email, 200).toLowerCase()); if (!cu) return fail(res, 404, 'Candidat introuvable.');
+  if (body.confirm) { run(`UPDATE cusers SET verified=1 WHERE id=?`, cu.id); return send(res, 200, { ok: true }); }
+  const r = await sendVerify('cand', cu.id, cu.email, cu.name); send(res, 200, { ok: true, sent: !!r.sent });
 }), { auth: true });
 on('PUT', '/api/admin/companies/:id', superOnly(async (req, res, { params, body }) => {
   const c = q1(`SELECT * FROM companies WHERE id=?`, +params.id); if (!c) return fail(res, 404, 'Entreprise introuvable.');
