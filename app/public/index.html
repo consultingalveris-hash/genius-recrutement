@@ -2,239 +2,244 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Genius Recrutement — tests, offres et candidatures</title>
-<meta name="description" content="Publiez vos offres, recevez des candidatures et classez les candidats grâce à des tests métier. Pour les recruteurs et les candidats au Sénégal et en Afrique de l’Ouest.">
+<title>Genius Recrutement — tests de recrutement, offres et candidatures</title>
+<meta name="description" content="Publiez vos offres, recevez des candidatures et classez les candidats grâce à des tests par métier. Conçu à Dakar pour les entreprises du Sénégal et d’Afrique de l’Ouest.">
 <meta name="theme-color" content="#0B6E66">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/style.css">
 <script src="/illus.js"></script>
 <style>
-:root{--indigo:#25306B;--mango:#F2A541;--mango-d:#C9761C;--display:'Bricolage Grotesque',var(--font)}
-h1,h2,h3{font-family:var(--display);letter-spacing:-.02em}
-.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(8px)}
-.gr-band{display:block}
+:root{--ink:#0F1B2D;--tint:#F2F7F6;--edge:#E3E8EE}
+body{background:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) body{background:var(--bg)}:root:not([data-theme="light"]){--tint:#13201F;--edge:#2A3743;--ink:#E8EEF3}}
+.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(8px)}
+.top-in{max-width:1200px}
+.menu{display:flex;gap:22px;margin-left:24px}
+.menu a{color:var(--fg-2);text-decoration:none;font-weight:600;font-size:14.5px}
+.menu a:hover{color:var(--accent)}
+@media (max-width:960px){.menu{display:none}}
+.who .link-plain{color:var(--fg-2);text-decoration:none;font-weight:600;font-size:14.5px;margin-right:6px}
+@media (max-width:560px){.who .link-plain{display:none}}
 
-/* --- hero --- */
-.hero{position:relative;overflow:hidden;background:var(--indigo);color:#fff}
-.hero-in{max-width:1180px;margin:auto;padding:64px 16px 72px;display:grid;gap:48px;grid-template-columns:1.05fr .95fr;align-items:center}
-@media (max-width:900px){.hero-in{grid-template-columns:1fr;padding-top:40px}}
-.hero h1{font-size:clamp(36px,6vw,66px);line-height:1.02;font-weight:800;color:#fff}
-.hero .lead{font-size:clamp(17px,2.2vw,20px);color:#D9DEF5;margin-top:18px;max-width:30em}
-.doors{display:grid;gap:12px;grid-template-columns:1fr 1fr;margin-top:32px;max-width:560px}
-@media (max-width:560px){.doors{grid-template-columns:1fr}}
-.door{display:flex;flex-direction:column;gap:4px;padding:18px 20px;border-radius:16px;text-decoration:none;transition:transform .15s}
-.door:hover{transform:translateY(-2px)}
-.door b{font-family:var(--display);font-size:21px}
-.door span{font-size:14px}
-.door.rh{background:var(--mango);color:#2B1A05}
-.door.cand{background:#fff;color:var(--indigo)}
-.hero .sub{font-size:13px;color:#B9C0E6;margin-top:16px}
-.hero .sub a{color:#fff}
+.wrapx{max-width:1200px;margin:auto;padding:0 20px}
+section{padding:88px 0}
+section.tint{background:var(--tint)}
+h2.sec{font-size:clamp(28px,3.6vw,40px);line-height:1.12;max-width:20em}
+p.lede{color:var(--fg-2);font-size:17.5px;margin-top:14px;max-width:38em}
 
-/* scène : téléphone + cartes flottantes */
-.scene{position:relative;min-height:470px}
-.phone{position:absolute;left:50%;top:0;transform:translateX(-50%);width:262px;height:470px;border-radius:38px;background:#0E1430;padding:12px;box-shadow:0 30px 60px rgba(0,0,0,.35)}
-.screen{background:#F4F6F8;border-radius:28px;height:100%;padding:18px 16px;color:#0F1B2D;display:flex;flex-direction:column;gap:10px}
-.screen .co{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px}
-.screen .co i{width:22px;height:22px;border-radius:6px;background:var(--mango);display:block}
-.ring{position:relative;width:64px;height:64px;align-self:center;margin:4px 0}
-.ring svg{transform:rotate(-90deg)}
-.ring b{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-size:20px}
-.screen .q{font-weight:700;font-size:14px;line-height:1.3}
-.screen .o{border:1.5px solid #DDE2E8;border-radius:12px;padding:9px 11px;font-size:12.5px;background:#fff}
-.screen .o.on{border-color:#0B6E66;background:#E1F0EE;color:#0B4F49;font-weight:600}
-.float{position:absolute;background:#fff;color:#0F1B2D;border-radius:16px;box-shadow:0 18px 40px rgba(0,0,0,.28);padding:12px 14px;font-size:13px}
-.f-notif{left:0;top:190px;display:flex;gap:10px;align-items:center;max-width:250px}
-.f-notif .ic{flex:none;width:36px;height:36px;border-radius:10px;background:var(--mango);display:grid;place-items:center;color:#2B1A05}
-.f-rank{right:0;bottom:30px;width:230px}
-.f-rank .r{display:flex;align-items:center;gap:8px;padding:5px 0}
-.f-rank .r span.av{width:28px;height:28px;border-radius:50%;overflow:hidden;background:#E1F0EE;flex:none}
-.f-rank .r span.av svg{width:28px;height:28px}
-.f-rank .bar{flex:1;height:7px;border-radius:9px;background:#E6EAEE;overflow:hidden}
-.f-rank .bar i{display:block;height:100%;background:#0B6E66}
-.f-person{right:6%;top:-6px;width:110px;height:110px;border-radius:50%;background:var(--mango);overflow:hidden;padding:0;display:grid;place-items:end center}
-@media (max-width:900px){.scene{min-height:500px;max-width:440px;margin:auto;width:100%}}
-@media (max-width:420px){.f-rank{right:-6px;width:200px}.f-notif{left:-6px;top:150px}.f-person{display:none}}
+/* hero */
+.hero{padding:72px 0 64px;background:linear-gradient(180deg,var(--tint),transparent 85%)}
+.hero-grid{display:grid;grid-template-columns:1fr 1.08fr;gap:56px;align-items:center}
+@media (max-width:980px){.hero-grid{grid-template-columns:1fr;gap:40px}}
+.tag{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:99px;background:var(--surface);border:1px solid var(--edge);font-size:13px;font-weight:600;color:var(--fg-2)}
+.tag i{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.hero h1{font-size:clamp(36px,5vw,58px);line-height:1.05;margin-top:20px;max-width:13em}
+.hero .lede{font-size:18.5px}
+.ctas{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+.ctas .btn{min-height:48px;padding:12px 22px;font-size:15.5px}
+.checks{display:flex;gap:18px;flex-wrap:wrap;margin-top:22px;color:var(--fg-2);font-size:14px}
+.checks span{display:inline-flex;align-items:center;gap:6px}
+.checks svg{color:var(--accent)}
+.shots{position:relative;padding-bottom:40px}
+.browser{border-radius:12px;background:var(--surface);border:1px solid var(--edge);box-shadow:0 30px 60px -20px rgba(15,27,45,.28);overflow:hidden}
+.browser .bar{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--edge);background:var(--surface-2)}
+.browser .bar i{width:10px;height:10px;border-radius:50%;background:#D5DBE2}
+.browser .bar span{margin-left:10px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid var(--edge);border-radius:6px;padding:3px 10px}
+.browser img{display:block;width:100%;height:auto}
+.phone{position:absolute;right:-12px;bottom:0;width:31%;min-width:150px;border-radius:26px;background:#0F1B2D;padding:7px;box-shadow:0 24px 50px -12px rgba(15,27,45,.45)}
+.phone img{display:block;width:100%;height:auto;border-radius:20px}
+@media (max-width:560px){.phone{right:-4px;width:38%}}
 
-/* entrée orchestrée unique */
-@media (prefers-reduced-motion:no-preference){
-  .phone{animation:rise .7s cubic-bezier(.2,.8,.2,1) both}
-  .f-notif{animation:pop .5s .5s cubic-bezier(.2,.8,.2,1) both}
-  .f-rank{animation:pop .5s .75s cubic-bezier(.2,.8,.2,1) both}
-  .f-person{animation:pop .5s 1s cubic-bezier(.2,.8,.2,1) both}
-  .ring circle.t{animation:count 20s linear infinite}
-}
-@keyframes rise{from{opacity:0;transform:translate(-50%,30px)}}
-@keyframes pop{from{opacity:0;transform:scale(.85) translateY(10px)}}
-@keyframes count{from{stroke-dashoffset:0}to{stroke-dashoffset:176}}
+/* comparaison */
+.compare{margin-top:40px;border:1px solid var(--edge);border-radius:16px;overflow:hidden;display:grid;grid-template-columns:1fr 1fr;background:var(--surface)}
+.compare>div{padding:8px 0}
+.compare h3{font-size:14px;color:var(--muted);padding:14px 24px 6px;font-weight:700}
+.compare .after{background:var(--tint)}
+.compare .after h3{color:var(--accent)}
+.compare li{list-style:none;display:flex;gap:10px;align-items:flex-start;padding:12px 24px;border-top:1px solid var(--line-soft);font-size:15px}
+.compare ul{margin:0;padding:0}
+.compare .before li{color:var(--fg-2)}
+.compare .before svg{color:#B4472E;flex:none;margin-top:3px}
+.compare .after svg{color:var(--accent);flex:none;margin-top:3px}
+@media (max-width:760px){.compare{grid-template-columns:1fr}}
 
-/* --- sections --- */
-.sec{max-width:1180px;margin:auto;padding:72px 16px}
-.sec h2{font-size:clamp(28px,4vw,42px);line-height:1.08;max-width:18em}
-.sec .intro{color:var(--fg-2);font-size:17px;margin-top:12px;max-width:40em}
-.live{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 12px;scroll-snap-type:x mandatory;margin-top:24px}
-.live a{scroll-snap-align:start;flex:none;width:280px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:6px}
-.live a:hover{border-color:var(--accent)}
-.live .fam{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700}
+/* fonctionnalités */
+.feat{display:grid;grid-template-columns:1fr 1.25fr;gap:56px;align-items:center;margin-top:72px}
+.feat.rev{grid-template-columns:1.25fr 1fr}
+.feat.rev .txt{order:2}
+@media (max-width:900px){.feat,.feat.rev{grid-template-columns:1fr;gap:28px}.feat.rev .txt{order:0}}
+.feat h3{font-size:clamp(22px,2.6vw,28px);line-height:1.2}
+.feat p{color:var(--fg-2);margin-top:12px;font-size:16px}
+.feat ul{margin:18px 0 0;padding:0;list-style:none}
+.feat li{display:flex;gap:10px;padding:6px 0;font-size:15px}
+.feat li svg{color:var(--accent);flex:none;margin-top:3px}
+.frame{border-radius:12px;border:1px solid var(--edge);overflow:hidden;box-shadow:0 20px 44px -18px rgba(15,27,45,.25);background:var(--surface)}
+.frame img{display:block;width:100%;height:auto}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:520px;margin:auto}
+.duo .phone2{border-radius:24px;background:#0F1B2D;padding:6px;box-shadow:0 20px 44px -16px rgba(15,27,45,.4)}
+.duo .phone2 img{display:block;width:100%;height:auto;border-radius:19px}
+.duo .phone2:nth-child(2){margin-top:44px}
 
-.two-up{display:grid;gap:24px;grid-template-columns:1fr 1fr;margin-top:36px}
-@media (max-width:820px){.two-up{grid-template-columns:1fr}}
-.side{border-radius:24px;padding:28px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start}
-.side.rh{background:#FFF1DB;color:#2B1A05}
-.side.cand{background:#E1F0EE;color:#0B3A36}
-.side .who{width:120px;height:120px;border-radius:50%;background:#fff;overflow:hidden;display:grid;place-items:end center}
-.side h3{font-size:26px}
-.side ul{margin:12px 0 18px;padding-left:18px}
-.side li{margin:6px 0}
-@media (max-width:520px){.side{grid-template-columns:1fr}.side .who{width:96px;height:96px}}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .side.rh{background:#3A2A12;color:#FBE3BC}:root:not([data-theme="light"]) .side.cand{background:#12403C;color:#C9EFE8}}
+/* métiers */
+.jobs{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:36px}
+@media (max-width:980px){.jobs{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:480px){.jobs{grid-template-columns:1fr}}
+.job{background:var(--surface);border:1px solid var(--edge);border-radius:14px;padding:20px}
+.job .ic{width:42px;height:42px;border-radius:10px;background:var(--accent-soft);color:var(--accent-soft-fg);display:grid;place-items:center}
+.job b{display:block;margin-top:14px;font-size:16px;line-height:1.3}
+.job span{display:block;color:var(--muted);font-size:13.5px;margin-top:6px}
 
-.flow{list-style:none;padding:0;margin:36px 0 0;display:grid;gap:18px;grid-template-columns:repeat(4,1fr);counter-reset:f}
-@media (max-width:900px){.flow{grid-template-columns:1fr 1fr}}
-@media (max-width:520px){.flow{grid-template-columns:1fr}}
-.flow li{counter-increment:f;position:relative;padding-top:56px}
-.flow li::before{content:counter(f);position:absolute;top:0;left:0;width:42px;height:42px;border-radius:50%;background:var(--indigo);color:#fff;font-family:var(--display);font-weight:800;font-size:20px;display:grid;place-items:center}
-.flow li:not(:last-child)::after{content:"";position:absolute;top:21px;left:52px;right:-10px;border-top:2px dashed var(--line)}
-@media (max-width:900px){.flow li::after{display:none}}
-.flow b{font-family:var(--display);font-size:19px;display:block;margin-bottom:4px}
-.flow p{color:var(--fg-2)}
+/* étapes */
+.steps4{list-style:none;padding:0;margin:40px 0 0;display:grid;grid-template-columns:repeat(4,1fr);gap:28px;counter-reset:s}
+@media (max-width:900px){.steps4{grid-template-columns:1fr 1fr}}
+@media (max-width:520px){.steps4{grid-template-columns:1fr}}
+.steps4 li{counter-increment:s;border-top:2px solid var(--edge);padding-top:18px}
+.steps4 li::before{content:"Étape " counter(s);display:block;color:var(--accent);font-weight:700;font-size:13.5px;margin-bottom:8px}
+.steps4 b{display:block;font-size:17px;margin-bottom:6px}
+.steps4 p{color:var(--fg-2);font-size:15px}
 
-.metiers{display:grid;gap:14px;grid-template-columns:repeat(5,1fr);margin-top:32px}
-@media (max-width:980px){.metiers{grid-template-columns:repeat(2,1fr)}}
-.metier{border-radius:18px;padding:18px;color:#fff;display:flex;flex-direction:column;gap:10px;min-height:150px}
-.metier b{font-family:var(--display);font-size:18px;line-height:1.15}
-.metier span{font-size:13px;opacity:.9;margin-top:auto}
+/* confiance + tarif */
+.trust3{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:36px}
+@media (max-width:820px){.trust3{grid-template-columns:1fr}}
+.trust3 .ic{width:40px;height:40px;border-radius:10px;background:var(--accent-soft);color:var(--accent-soft-fg);display:grid;place-items:center;margin-bottom:12px}
+.trust3 b{display:block;font-size:16.5px;margin-bottom:6px}
+.trust3 p{color:var(--fg-2);font-size:15px}
+.offer-box{margin-top:36px;display:grid;grid-template-columns:1.2fr 1fr;border:1px solid var(--edge);border-radius:16px;overflow:hidden;background:var(--surface)}
+@media (max-width:820px){.offer-box{grid-template-columns:1fr}}
+.offer-box>div{padding:30px}
+.offer-box .price{font-size:40px;font-weight:800;letter-spacing:-.02em;margin:8px 0 4px}
+.offer-box ul{margin:16px 0 0;padding:0;list-style:none}
+.offer-box li{display:flex;gap:10px;padding:5px 0;font-size:15px}
+.offer-box li svg{color:var(--accent);flex:none;margin-top:3px}
+.offer-box .side{background:var(--tint);display:flex;flex-direction:column;justify-content:center;gap:12px}
 
-.trust{display:grid;gap:18px;grid-template-columns:repeat(3,1fr);margin-top:28px}
-@media (max-width:820px){.trust{grid-template-columns:1fr}}
-.trust div{border-top:3px solid var(--accent);padding-top:14px}
-.trust b{display:block;font-size:16px;margin-bottom:4px}
-.trust p{color:var(--fg-2);font-size:14.5px}
-
-.cta{background:var(--teal,#0B6E66);background:#0B6E66;color:#fff;text-align:center}
-.cta .sec{padding:64px 16px}
-.cta h2{margin:auto;color:#fff}
-.cta .doors{margin:28px auto 0}
-footer.foot{text-align:center;padding:24px 16px 40px;font-size:13px;color:var(--muted)}
+.final{background:#0B6E66;color:#fff;text-align:center;padding:72px 0}
+.final h2{color:#fff;font-size:clamp(28px,3.6vw,40px);margin:auto;max-width:18em}
+.final p{color:#D3ECE8;margin-top:12px;font-size:17px}
+.final .ctas{justify-content:center}
+.final .btn.light{background:#fff;color:#0B6E66;border-color:#fff}
+.final .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.5)}
+footer.site{padding:36px 0 44px;font-size:13.5px;color:var(--muted)}
+footer.site .cols{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}
+footer.site a{color:var(--fg-2)}
 </style>
 </head>
 <body>
 <header class="top"><div class="top-in">
   <a class="brand" href="/"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg></span>Genius Recrutement</a>
-  <div class="who"><a class="btn" href="/espace">Espace candidat</a><a class="btn primary" href="/app#/login">Espace RH</a></div>
+  <nav class="menu"><a href="#fonctionnalites">Fonctionnalités</a><a href="#metiers">Métiers</a><a href="#etapes">Comment ça marche</a><a href="#tarif">Tarif</a></nav>
+  <div class="who"><a class="link-plain" href="/espace">Espace candidat</a><a class="btn" href="/app#/login">Connexion</a><a class="btn primary" href="/app#/signup">Créer un compte</a></div>
 </div></header>
 
 <main>
-<section class="hero">
-  <div class="hero-in">
-    <div>
-      <h1>Le bon profil, prouvé en dix minutes.</h1>
-      <p class="lead">Les entreprises publient leurs offres et testent les candidats sur leur vrai métier. Les candidats postulent en un clic et montrent ce qu’ils savent faire.</p>
-      <div class="doors">
-        <a class="door rh" href="/app#/signup"><b>Je recrute</b><span>Publier une offre, envoyer un test, recevoir un classement</span></a>
-        <a class="door cand" href="/espace"><b>Je cherche un emploi</b><span>Voir les offres et postuler avec mon profil et mon CV</span></a>
-      </div>
-      <p class="sub">Gratuit pendant la phase de test. Vous avez reçu un lien de test ? Ouvrez-le directement.</p>
-    </div>
-    <div class="scene" aria-hidden="true">
-      <div class="phone"><div class="screen">
-        <div class="co"><i></i>Question 7 sur 30</div>
-        <div class="ring"><svg width="64" height="64"><circle cx="32" cy="32" r="28" stroke="#E6EAEE" stroke-width="6" fill="none"/><circle class="t" cx="32" cy="32" r="28" stroke="#0B6E66" stroke-width="6" fill="none" stroke-dasharray="176" stroke-linecap="round"/></svg><b>14</b></div>
-        <div class="q">Un client mécontent coupe la parole. Que faites-vous d’abord ?</div>
-        <div class="o">Je lui demande de se calmer</div>
-        <div class="o on">Je le laisse finir, puis je reformule sa demande</div>
-        <div class="o">Je le transfère à un superviseur</div>
-        <div class="o">Je lui propose de rappeler plus tard</div>
-      </div></div>
-      <div class="float f-notif"><span class="ic" id="notifIcon"></span><div><b>Nouvelle offre près de chez vous</b><br><span style="color:#4A5565">Conseiller clientèle · Dakar</span></div></div>
-      <div class="float f-rank"><b style="font-size:13px">Classement du test</b>
-        <div class="r"><span class="av" data-p="awa"></span><span style="width:48px">Awa</span><span class="bar"><i style="width:88%"></i></span><b>88</b></div>
-        <div class="r"><span class="av" data-p="moussa"></span><span style="width:48px">Moussa</span><span class="bar"><i style="width:74%"></i></span><b>74</b></div>
-        <div class="r"><span class="av" data-p="fatou"></span><span style="width:48px">Fatou</span><span class="bar"><i style="width:61%"></i></span><b>61</b></div>
-      </div>
-      <div class="float f-person" data-p="awa"></div>
-    </div>
+<section class="hero"><div class="wrapx hero-grid">
+  <div>
+    <span class="tag"><i></i>Conçu à Dakar pour les entreprises d’Afrique de l’Ouest</span>
+    <h1>Recrutez sur des résultats, pas sur des impressions.</h1>
+    <p class="lede">Publiez vos offres, envoyez automatiquement un test métier aux candidats qui correspondent, et recevez un classement clair avant le premier entretien.</p>
+    <div class="ctas"><a class="btn primary" href="/app#/signup">Créer un compte entreprise</a><a class="btn" href="mailto:consultingalveris@gmail.com?subject=Demande%20de%20d%C3%A9monstration%20Genius%20Recrutement">Demander une démonstration</a></div>
+    <div class="checks" id="checks"></div>
   </div>
-  <div id="band1"></div>
-</section>
-
-<section class="sec" id="offres" hidden>
-  <h2>Offres publiées en ce moment</h2>
-  <p class="intro">Mises à jour en direct par les entreprises inscrites.</p>
-  <div class="live" id="live"></div>
-  <a class="btn" href="/espace" style="margin-top:8px">Voir toutes les offres</a>
-</section>
-
-<section class="sec">
-  <h2>Un seul endroit pour ceux qui recrutent et ceux qui cherchent.</h2>
-  <div class="two-up">
-    <div class="side rh"><div class="who" data-p="moussa"></div><div>
-      <h3>Vous recrutez</h3>
-      <ul><li>Publiez une offre : les candidats du métier sont prévenus par e-mail et sur leur téléphone.</li>
-      <li>Le test part tout seul aux candidats dont le profil correspond.</li>
-      <li>Vous recevez un classement avec la note par compétence, le CV et la photo.</li></ul>
-      <a class="btn primary" href="/app#/signup">Créer le compte de mon entreprise</a></div></div>
-    <div class="side cand"><div class="who" data-p="fatou"></div><div>
-      <h3>Vous cherchez un emploi</h3>
-      <ul><li>Créez votre profil une fois : photo, CV, métier recherché.</li>
-      <li>Postulez en un clic et suivez chaque candidature.</li>
-      <li>Montrez ce que vous savez faire grâce au test, pas seulement avec votre CV.</li></ul>
-      <a class="btn primary" href="/espace#/signup">Créer mon profil candidat</a></div></div>
+  <div class="shots">
+    <div class="browser"><div class="bar"><i></i><i></i><i></i><span>recrutement.alveris-consulting.com</span></div><img src="/img/capture-classement.webp" alt="Classement des candidats à un test, avec la note globale et la note par compétence" width="1600" height="950"></div>
+    <div class="phone"><img src="/img/capture-test-mobile.webp" alt="Test passé par un candidat sur téléphone, avec compte à rebours" width="780" height="1560"></div>
   </div>
-</section>
+</div></section>
 
-<section class="sec" style="padding-top:24px">
-  <h2>De l’annonce à l’embauche</h2>
-  <ol class="flow">
-    <li><b>L’entreprise publie</b><p>Une offre avec son métier, sa ville, son contrat, et le test qui l’accompagne.</p></li>
-    <li><b>Les candidats postulent</b><p>Ils sont alertés, consultent l’offre et envoient leur profil en un clic.</p></li>
-    <li><b>Le test part tout seul</b><p>Questions du métier, mises en situation, français et logique, chronométrées.</p></li>
-    <li><b>Le classement arrive</b><p>Note globale et détail par compétence. L’entreprise retient ou répond poliment.</p></li>
+<section><div class="wrapx">
+  <h2 class="sec">Le recrutement prend trop de temps pour un résultat incertain</h2>
+  <p class="lede">CV triés à la main, entretiens avec des candidats qui n’ont pas le niveau, réponses perdues dans les messageries : Genius met de l’ordre et des preuves dans chaque recrutement.</p>
+  <div class="compare">
+    <div class="before"><h3>Aujourd’hui</h3><ul id="before"></ul></div>
+    <div class="after"><h3>Avec Genius Recrutement</h3><ul id="after"></ul></div>
+  </div>
+</div></section>
+
+<section class="tint" id="fonctionnalites"><div class="wrapx">
+  <h2 class="sec">Tout le recrutement, de l’annonce à la décision</h2>
+  <div class="feat">
+    <div class="txt"><h3>Des tests par métier, notés automatiquement</h3><p>Choisissez le métier, le nombre de questions et le temps. Chaque candidat reçoit un tirage différent, réponses mélangées, temps contrôlé par le serveur.</p>
+      <ul class="ul-check"><li>Connaissances métier, mises en situation, français et logique</li><li>Poids de chaque compétence réglable</li><li>Alertes en cas de temps dépassé ou de sortie de la page</li></ul></div>
+    <div class="frame"><img src="/img/capture-detail.webp" alt="Fiche d’un candidat : note par compétence et réponses question par question" loading="lazy" width="1280" height="1280"></div>
+  </div>
+  <div class="feat rev">
+    <div class="txt"><h3>Vos offres et toutes les candidatures au même endroit</h3><p>Publiez une annonce : les candidats du métier sont prévenus par e-mail et sur leur téléphone. Le test part tout seul quand le profil correspond.</p>
+      <ul class="ul-check"><li>CV, coordonnées et note du test sur une seule ligne</li><li>Retenir ou refuser en un clic, avec un message courtois au candidat</li><li>Export Excel du classement</li></ul></div>
+    <div class="frame"><img src="/img/capture-candidatures.webp" alt="Liste des candidatures à une offre avec la note obtenue au test" loading="lazy" width="1600" height="700"></div>
+  </div>
+  <div class="feat">
+    <div class="txt"><h3>Un espace candidat pensé pour le téléphone</h3><p>Les candidats créent leur profil une fois, avec photo et CV, consultent les offres par métier et postulent en un clic. Le test se passe sur téléphone, sans application à installer.</p>
+      <ul class="ul-check"><li>Alertes dès qu’une offre du métier est publiée</li><li>Suivi de chaque candidature</li><li>Suppression du compte à tout moment</li></ul></div>
+    <div class="duo"><div class="phone2"><img src="/img/capture-offres-mobile.webp" alt="Liste des offres dans l’espace candidat sur téléphone" loading="lazy" width="780" height="1560"></div><div class="phone2"><img src="/img/capture-test-mobile.webp" alt="Question du test sur téléphone" loading="lazy" width="780" height="1560"></div></div>
+  </div>
+  <div class="feat rev">
+    <div class="txt"><h3>Un tableau de bord pour piloter vos recrutements</h3><p>Offres ouvertes, candidatures de la semaine, tests terminés et note moyenne : l’essentiel dès la connexion, avec les dernières candidatures à traiter.</p>
+      <ul class="ul-check"><li>Logo de votre entreprise sur les tests et les e-mails</li><li>Résultats reçus par e-mail à chaque test terminé</li></ul></div>
+    <div class="frame"><img src="/img/capture-accueil-rh.webp" alt="Tableau de bord RH avec les chiffres clés" loading="lazy" width="1600" height="950"></div>
+  </div>
+</div></section>
+
+<section id="metiers"><div class="wrapx">
+  <h2 class="sec">Cinq métiers couverts dès aujourd’hui</h2>
+  <p class="lede">Questions rédigées pour le contexte sénégalais : SYSCOHADA, TVA à 18 %, IPRES, CSS, Code du travail. D’autres métiers suivront selon vos besoins.</p>
+  <div class="jobs" id="jobs"></div>
+</div></section>
+
+<section class="tint" id="etapes"><div class="wrapx">
+  <h2 class="sec">Comment ça marche</h2>
+  <ol class="steps4">
+    <li><b>Vous publiez l’offre</b><p>Métier, ville, contrat, description, et le test qui l’accompagne.</p></li>
+    <li><b>Les candidats postulent</b><p>Ils sont alertés et envoient leur profil et leur CV en un clic.</p></li>
+    <li><b>Le test part tout seul</b><p>Aux candidats dont le métier correspond, à passer sur téléphone ou ordinateur.</p></li>
+    <li><b>Vous décidez</b><p>Classement, détail par compétence, CV : vous retenez ou répondez en un clic.</p></li>
   </ol>
-</section>
+</div></section>
 
-<section class="sec" style="padding-top:24px">
-  <h2>Cinq métiers déjà couverts</h2>
-  <p class="intro">Chaque test mêle des questions du métier, des mises en situation, du français et de la logique. Les réponses sont mélangées pour chaque candidat.</p>
-  <div class="metiers" id="metiers"></div>
-</section>
+<section id="securite"><div class="wrapx">
+  <h2 class="sec">Des données protégées</h2>
+  <div class="trust3" id="trust"></div>
+</div></section>
 
-<section class="sec" style="padding-top:24px">
-  <h2>Des données traitées avec sérieux</h2>
-  <div class="trust">
-    <div><b>Chaque entreprise ne voit que ses candidats</b><p>Un profil n’est visible que par les entreprises auxquelles le candidat a lui-même postulé.</p></div>
-    <div><b>Effacement automatique</b><p>Les résultats sont effacés 12 mois après le test. Le candidat peut supprimer son compte à tout moment.</p></div>
-    <div><b>Conforme à la loi sénégalaise</b><p>Loi n° 2008-12 sur les données personnelles. <a href="/confidentialite.html">Lire la politique de confidentialité</a>.</p></div>
+<section class="tint" id="tarif"><div class="wrapx">
+  <h2 class="sec">Tarif</h2>
+  <div class="offer-box">
+    <div><b style="color:var(--accent)">Phase pilote</b><div class="price">Gratuit</div><p class="muted">Pour les entreprises qui testent Genius Recrutement pendant la phase de lancement.</p>
+      <ul class="ul-check"><li>Tests illimités sur les cinq métiers</li><li>Publication d’offres et espace candidat</li><li>Accompagnement à la mise en route</li></ul></div>
+    <div class="side"><p>Vous recrutez régulièrement ou vous avez des besoins particuliers ? Parlons-en.</p><a class="btn primary" href="/app#/signup">Créer un compte entreprise</a><a class="btn" href="mailto:consultingalveris@gmail.com?subject=Demande%20de%20d%C3%A9monstration%20Genius%20Recrutement">Demander une démonstration</a></div>
   </div>
-</section>
+</div></section>
 
-<section class="cta">
-  <div id="band2"></div>
-  <div class="sec">
-    <h2>Prêt à essayer ?</h2>
-    <div class="doors">
-      <a class="door rh" href="/app#/signup"><b>Je recrute</b><span>Compte entreprise gratuit</span></a>
-      <a class="door cand" href="/espace#/signup"><b>Je cherche un emploi</b><span>Profil candidat gratuit</span></a>
-    </div>
-  </div>
-</section>
+<section class="final"><div class="wrapx">
+  <h2>Votre prochain recrutement peut commencer aujourd’hui</h2>
+  <p>Créez votre compte en deux minutes. Vos candidats, eux, n’ont rien à installer.</p>
+  <div class="ctas"><a class="btn light" href="/app#/signup">Créer un compte entreprise</a><a class="btn ghost" href="/espace">Je cherche un emploi</a></div>
+</div></section>
 </main>
-<footer class="foot"><a href="/confidentialite.html">Confidentialité</a> · <a href="/mentions-legales.html">Mentions légales</a> · <a href="/essai/">Version d’essai (gestion du personnel)</a> · © 2026 Alveris Consulting</footer>
+
+<footer class="site"><div class="wrapx cols">
+  <div>Genius Recrutement est un service d’ALVERIS CONSULTING SARL, Dakar, Sénégal<br>RCCM SN DKR 2026 B 9903 · NINEA 012897601</div>
+  <div><a href="/confidentialite.html">Confidentialité</a> · <a href="/mentions-legales.html">Mentions légales</a> · <a href="/espace">Espace candidat</a> · <a href="mailto:consultingalveris@gmail.com">Contact</a></div>
+</div></footer>
+
 <script>
 (function(){
   var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
-  document.getElementById('band1').innerHTML=GR.pattern('b1',24);document.getElementById('band2').innerHTML=GR.pattern('b2',24);
-  document.querySelectorAll('[data-p]').forEach(function(el){el.innerHTML=GR.person(el.dataset.p,el.classList.contains('av')?28:(el.classList.contains('f-person')?110:120));});
-  document.getElementById('notifIcon').innerHTML=GR.famIcon('cc',20);
+  var ok='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>';
+  var no='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+  document.querySelectorAll('.ul-check li').forEach(function(li){li.innerHTML=ok+'<span>'+li.innerHTML+'</span>';});
+  document.getElementById('checks').innerHTML=['Gratuit en phase pilote','Rien à installer','Données hébergées en sécurité'].map(function(t){return '<span>'+ok+t+'</span>';}).join('');
+  var before=['CV triés à la main, un par un','Entretiens avec des candidats qui n’ont pas le niveau','Candidatures éparpillées entre e-mail et WhatsApp','Aucune trace pour justifier un choix','Les candidats non retenus n’ont jamais de réponse'];
+  var after=['Un test métier envoyé automatiquement','Un classement avant le premier entretien','Toutes les candidatures sur une seule page','Notes et réponses conservées pour chaque candidat','Une réponse courtoise envoyée en un clic'];
+  document.getElementById('before').innerHTML=before.map(function(t){return '<li>'+no+'<span>'+t+'</span></li>';}).join('');
+  document.getElementById('after').innerHTML=after.map(function(t){return '<li>'+ok+'<span>'+t+'</span></li>';}).join('');
+  var lock='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">';
+  document.getElementById('trust').innerHTML=[
+    [lock+'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>','Chaque entreprise ne voit que ses candidats','Un profil candidat n’est visible que par les entreprises auxquelles il a postulé. Connexions chiffrées, serveur protégé.'],
+    [lock+'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>','Effacement automatique','Résultats effacés 12 mois après le test, candidatures 12 mois après leur envoi. Le candidat peut supprimer son compte à tout moment.'],
+    [lock+'<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/></svg>','Conforme à la loi sénégalaise','Loi n° 2008-12 sur les données personnelles. <a href="/confidentialite.html">Politique de confidentialité</a>.']
+  ].map(function(x){return '<div><div class="ic">'+x[0]+'</div><b>'+x[1]+'</b><p>'+x[2]+'</p></div>';}).join('');
   fetch('/api/meta').then(function(r){return r.json();}).then(function(m){
-    document.getElementById('metiers').innerHTML=m.families.map(function(f){var n=f.counts.M+f.counts.S;
-      return '<div class="metier" style="background:'+GR.famColor[f.k]+'">'+GR.famIcon(f.k,30)+'<b>'+esc(f.name)+'</b><span>'+n+' questions du métier, plus le tronc commun</span></div>';}).join('');
-  }).catch(function(){});
-  fetch('/api/offers').then(function(r){return r.json();}).then(function(d){
-    if(!d.offers||!d.offers.length)return;
-    document.getElementById('offres').hidden=false;
-    document.getElementById('live').innerHTML=d.offers.slice(0,12).map(function(o){
-      return '<a href="/espace#/offre/'+o.id+'"><span class="fam" style="color:'+GR.famColor[o.family]+'">'+GR.famIcon(o.family,16)+esc(o.familyName)+'</span><b style="font-size:16px">'+esc(o.title)+'</b><span class="small muted">'+esc(o.company)+(o.city?', '+esc(o.city):'')+'</span>'+(o.contract?'<span class="pill neutral" style="align-self:flex-start">'+esc(o.contract)+'</span>':'')+'</a>';}).join('');
+    document.getElementById('jobs').innerHTML=m.families.map(function(f){return '<div class="job"><div class="ic">'+GR.famIcon(f.k,22)+'</div><b>'+esc(f.name)+'</b><span>'+(f.counts.M+f.counts.S)+' questions du métier, plus '+(f.counts.F+f.counts.L)+' de français et de logique</span></div>';}).join('');
   }).catch(function(){});
 })();
 </script>

@@ -39,9 +39,11 @@
       '<path d="M14 28l7-14 7 14z" fill="' + C.indigo + '"/><path d="M42 28l7-14 7 14z" fill="' + C.indigo + '"/><circle cx="28" cy="7" r="2.6" fill="' + C.white + '"/><circle cx="0" cy="7" r="2.6" fill="' + C.white + '"/><circle cx="56" cy="7" r="2.6" fill="' + C.white + '"/>' +
       '</pattern></defs><rect width="100%" height="' + h + '" fill="url(#' + id + ')"/></svg>';
   }
-  function empty(kind) {
-    var p = { offres: 'awa', candidats: 'moussa', tests: 'fatou' }[kind] || 'ibou';
-    return '<div class="gr-empty-art"><span class="gr-empty-disc"></span>' + person(p, 120) + '</div>';
-  }
+  var emptyIc = {
+    offres: '<path d="M4 7h16v12H4z"/><path d="M9 7V5h6v2"/>',
+    candidats: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5"/>',
+    tests: '<path d="M8 4h8v3H8z"/><rect x="5" y="5.5" width="14" height="15" rx="2"/><path d="m9 13 2 2 4-4"/>'
+  };
+  function empty(kind) { return '<div class="empty-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (emptyIc[kind] || emptyIc.tests) + '</svg></div>'; }
   window.GR = { person: person, famIcon: famIcon, famColor: famColor, pattern: pattern, empty: empty, C: C };
 })();
