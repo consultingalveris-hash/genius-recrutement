@@ -4,21 +4,24 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Genius Recrutement</title>
 <meta name="robots" content="noindex,nofollow">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/style.css">
+<script src="/illus.js"></script>
 </head>
 <body>
 <header class="top" id="top" hidden><div class="top-in">
-  <a class="brand" href="#/tests"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg></span>Genius Recrutement</a>
+  <a class="brand" href="#/accueil"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg></span>Genius Recrutement</a>
   <nav class="nav" id="nav"></nav>
   <div class="who"><span id="who"></span><button class="btn sm" id="logout">Se déconnecter</button></div>
 </div></header>
+<div class="bandwrap" id="bandtop"></div>
 <main id="app"></main>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="modal"></div>
 <script>
 (function(){
 'use strict';
+try{document.getElementById('bandtop').innerHTML=GR.pattern('bt',8);}catch(e){}
 var ME=null, META=null, app=document.getElementById('app');
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function $(s,r){return (r||document).querySelector(s);}
@@ -46,7 +49,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal()
 function chrome(active){
   var top=$('#top');top.hidden=!ME;if(!ME)return;
   $('#who').innerHTML=(ME.logo?'<img src="'+esc(ME.logo)+'" alt="Logo '+esc(ME.company)+'" style="height:36px;max-width:150px;object-fit:contain;display:block">':'')+'<span>'+esc(ME.company)+'</span>';$('#who').style.cssText='display:flex;align-items:center;gap:10px';
-  var items=[['#/tests','Mes tests','tests'],['#/offres','Offres','offres'],['#/mails','E-mails','mails'],['#/account','Mon compte','account']];
+  var items=[['#/accueil','Accueil','accueil'],['#/tests','Mes tests','tests'],['#/offres','Offres','offres'],['#/mails','E-mails','mails'],['#/account','Mon compte','account']];
   $('#nav').innerHTML=items.map(function(i){return '<a href="'+i[0]+'" class="'+(active===i[2]?'on':'')+'">'+i[1]+'</a>';}).join('');
 }
 $('#logout').addEventListener('click',function(){api('POST','/api/logout').then(function(){ME=null;location.hash='#/login';});});
@@ -67,7 +70,7 @@ V.login=function(){
   '<label class="field">Mot de passe<input class="in" name="password" type="password" autocomplete="current-password" required></label>'+
   '<p class="err" hidden></p><button class="btn primary block" type="submit">Se connecter</button>'+
   '<a class="small" href="#/forgot">Mot de passe oublié ?</a></form>','Pas encore de compte entreprise ? <a href="#/signup">Créer un compte</a>'+CAND_NOTE);
-  bindForm('#f',function(d){return api('POST','/api/login',d).then(function(r){ME=r.user;location.hash='#/tests';});});
+  bindForm('#f',function(d){return api('POST','/api/login',d).then(function(r){ME=r.user;location.hash='#/accueil';});});
 };
 V.signup=function(){
   authPage('Espace RH — créer un compte','Un compte par entreprise, pour les recruteurs. Gratuit pendant la phase de test.',
@@ -101,7 +104,7 @@ V.tests=function(){var rt=ROUTE;
       '<p class="small muted">'+esc(t.familyName)+' · '+t.count+' questions · '+t.perQ+' s par question'+(t.deadline?' · jusqu’au '+fmtDate(new Date(t.deadline+'T12:00').getTime()):'')+'</p>'+
       '<div class="row small"><b>'+t.candidates+'</b> invité'+(t.candidates>1?'s':'')+'<span class="muted">·</span><b>'+t.done+'</b> terminé'+(t.done>1?'s':'')+'</div></a>';}
     app.innerHTML='<div class="wrap col"><div class="row between"><div><h1>Mes tests</h1><p class="muted" style="margin-top:4px">Un test par poste à pourvoir. Ouvrez-en un pour inviter des candidats et voir le classement.</p></div><a class="btn primary" href="#/tests/new">+ Nouveau test</a></div>'+
-      (act.length?'<div class="grid">'+act.map(card).join('')+'</div>':'<div class="card empty"><h2 style="color:var(--fg)">Aucun test pour l’instant</h2><p style="margin:8px 0 18px">Commencez par créer le test du poste que vous voulez pourvoir.</p><a class="btn primary" href="#/tests/new">Créer mon premier test</a></div>')+
+      (act.length?'<div class="grid">'+act.map(card).join('')+'</div>':'<div class="card empty">'+GR.empty('tests')+'<h2 style="color:var(--fg)">Aucun test pour l’instant</h2><p style="margin:8px 0 18px">Commencez par créer le test du poste que vous voulez pourvoir.</p><a class="btn primary" href="#/tests/new">Créer mon premier test</a></div>')+
       (arc.length?'<h2 style="margin-top:12px">Archivés</h2><div class="grid">'+arc.map(card).join('')+'</div>':'')+'</div>';
   }).catch(handle);
 };
@@ -296,7 +299,7 @@ V.offres=function(){
     app.innerHTML='<div class="wrap col"><div class="row between"><div><h1>Offres d’emploi</h1><p class="muted" style="margin-top:4px">Publiez une annonce : elle apparaît dans l’<a href="/espace" target="_blank" rel="noopener">espace candidat</a>, et les candidats du métier sont alertés par e-mail et sur leur téléphone.</p></div><a class="btn primary" href="#/offres/new">+ Publier une offre</a></div>'+
     (r.offers.length?'<div class="card tight"><div class="table-wrap"><table><thead><tr><th>Poste</th><th>Métier</th><th>Statut</th><th class="num">Candidatures</th><th>Test associé</th><th></th></tr></thead><tbody>'+r.offers.map(function(o){
       return '<tr><td><b>'+esc(o.title)+'</b><div class="small muted">'+esc([o.city,o.contract].filter(Boolean).join(' · '))+' · publiée le '+fmtDate(o.createdAt)+'</div></td><td class="small">'+esc(o.familyName)+'</td><td>'+(o.status==='ouverte'?'<span class="pill ok">Ouverte</span>':'<span class="pill neutral">Fermée</span>')+'</td><td class="num"><b>'+o.applications+'</b></td><td class="small">'+(o.testId?(o.autoTest?'Envoi automatique':'Envoi manuel'):'<span class="muted">Aucun</span>')+'</td><td><a class="btn sm" href="#/offres/'+o.id+'">Ouvrir</a></td></tr>';}).join('')+'</tbody></table></div></div>'
-    :'<div class="card empty"><h2 style="color:var(--fg)">Aucune offre publiée</h2><p style="margin:8px 0 18px">Publiez votre première annonce : les candidats postulent en un clic et reçoivent votre test automatiquement.</p><a class="btn primary" href="#/offres/new">Publier une offre</a></div>')+'</div>';
+    :'<div class="card empty">'+GR.empty('offres')+'<h2 style="color:var(--fg)">Aucune offre publiée</h2><p style="margin:8px 0 18px">Publiez votre première annonce : les candidats postulent en un clic et reçoivent votre test automatiquement.</p><a class="btn primary" href="#/offres/new">Publier une offre</a></div>')+'</div>';
   }).catch(handle);
 };
 V.offreForm=function(id){
@@ -345,14 +348,35 @@ V.offre=function(id){
   }).catch(handle);
 };
 
+/* ---------- accueil RH (tableau de bord) ---------- */
+V.accueil=function(){
+  chrome('accueil');var rt=ROUTE;
+  api('GET','/api/rh/dashboard').then(function(d){if(rt!==ROUTE)return;var k=d.k,h=new Date().getHours();
+    var first=ME.name.split(' ')[0];
+    var next=!k.tests?['Créez votre premier test','Choisissez le métier, le nombre de questions et le temps : deux minutes suffisent.','#/tests/new','Créer un test']
+      :!k.offers?['Publiez votre première offre','Les candidats du métier seront prévenus et le test leur partira tout seul.','#/offres/new','Publier une offre']
+      :['Votre recrutement avance',k.appsWeek+' candidature'+(k.appsWeek>1?'s':'')+' reçue'+(k.appsWeek>1?'s':'')+' ces 7 derniers jours.','#/offres','Voir mes offres'];
+    var ASTAT2={recue:['Reçue','neutral'],test_envoye:['Test envoyé','info'],retenue:['Retenue','ok'],refusee:['Non retenue','warn']};
+    app.innerHTML='<div class="wrap col">'+
+    '<section class="welcome"><div><p style="margin:0 0 4px;color:#F2C777;font-weight:600">'+(h<12?'Bonjour':h<18?'Bon après-midi':'Bonsoir')+' '+esc(first)+'</p><h1>'+esc(next[0])+'</h1><p>'+esc(next[1])+'</p><a class="btn" href="'+next[2]+'" style="margin-top:16px;background:var(--mango);color:#2B1A05">'+esc(next[3])+'</a></div><div class="art">'+GR.person('moussa',130)+'</div></section>'+
+    '<div class="kpis"><div class="kpi accent"><span class="small">Offres ouvertes</span><b>'+k.offers+'</b></div><div class="kpi"><span class="small muted">Candidatures reçues</span><b>'+k.apps+'</b><span class="small muted">dont '+k.appsWeek+' cette semaine</span></div><div class="kpi"><span class="small muted">Tests terminés</span><b>'+k.done+'</b><span class="small muted">sur '+k.tests+' test'+(k.tests>1?'s':'')+' actif'+(k.tests>1?'s':'')+'</span></div><div class="kpi"><span class="small muted">Note moyenne</span><b>'+(k.avg!=null?k.avg+' %':'–')+'</b></div></div>'+
+    '<div class="two" style="gap:16px;align-items:start"><div class="card tight"><div style="padding:14px 16px;border-bottom:1px solid var(--line-soft)"><h2>Dernières candidatures</h2></div><div class="feed">'+
+      (d.latest.length?d.latest.map(function(a){var s=ASTAT2[a.status]||[a.status,'neutral'];return '<a href="#/offres/'+a.offerId+'">'+photoOr(a.name,a.photo)+'<div class="grow"><b>'+esc(a.name)+'</b><div class="small muted">'+esc(a.title)+', le '+fmtDate(a.createdAt)+'</div></div>'+(a.score!=null?'<b>'+a.score+' %</b>':'<span class="pill '+s[1]+'">'+s[0]+'</span>')+'</a>';}).join(''):'<div class="empty">'+GR.empty('offres')+'Les candidatures de vos offres apparaîtront ici.</div>')+
+    '</div></div><div class="card tight"><div style="padding:14px 16px;border-bottom:1px solid var(--line-soft)"><h2>Derniers tests terminés</h2></div><div class="feed">'+
+      (d.results.length?d.results.map(function(c){return '<a href="#/tests/'+c.test_id+'">'+avatar(c.name)+'<div class="grow"><b>'+esc(c.name)+'</b><div class="small muted">'+esc(c.title)+'</div></div><div style="width:90px"><div class="bar"><i style="width:'+c.global+'%"></i></div></div><b>'+c.global+' %</b></a>';}).join(''):'<div class="empty">'+GR.empty('tests')+'Les résultats arriveront ici dès qu’un candidat aura terminé un test.</div>')+
+    '</div></div></div>'+
+    '<div class="row"><a class="btn primary" href="#/offres/new">+ Publier une offre</a><a class="btn" href="#/tests/new">+ Nouveau test</a><a class="btn" href="/espace" target="_blank" rel="noopener">Voir l’espace candidat</a></div></div>';
+  }).catch(handle);
+};
+
 /* ---------- routeur ---------- */
 function handle(e){if(e.status===401){ME=null;location.hash='#/login';return;}if(e.status===404){app.innerHTML='<div class="wrap"><div class="card empty"><h2 style="color:var(--fg)">Page introuvable</h2><p style="margin:8px 0 16px">'+esc(e.message)+'</p><a class="btn" href="#/tests">Retour à mes tests</a></div></div>';return;}toast(e.message);}
 var ROUTE=0;
 function route(){ROUTE++;
-  var h=location.hash.replace(/^#\/?/,'')||'tests',p=h.split('/');
+  var h=location.hash.replace(/^#\/?/,'')||'accueil',p=h.split('/');
   var pub={login:1,signup:1,forgot:1,reset:1};
   if(!ME&&!pub[p[0]]){location.hash='#/login';return;}
-  if(ME&&(p[0]==='login'||p[0]==='signup')){location.hash='#/tests';return;}
+  if(ME&&(p[0]==='login'||p[0]==='signup')){location.hash='#/accueil';return;}
   window.scrollTo(0,0);
   if(p[0]==='reset')return V.reset(p[1]||'');
   if(p[0]==='offres'&&p[1]==='new')return V.offreForm(null);
@@ -361,7 +385,7 @@ function route(){ROUTE++;
   if(p[0]==='tests'&&p[1]==='new')return V.testForm(null);
   if(p[0]==='tests'&&p[1]&&p[2]==='edit')return V.testForm(p[1]);
   if(p[0]==='tests'&&p[1]){if(V._last!==p[1]){filt={q:'',st:''};V._last=p[1];}return V.test(p[1]);}
-  (V[p[0]]||V.tests)();
+  (V[p[0]]||V.accueil)();
 }
 window.addEventListener('hashchange',route);
 api('GET','/api/me').then(function(r){ME=r.user;route();}).catch(function(){app.innerHTML='<div class="narrow"><p class="note warn">Le serveur ne répond pas. Réessayez dans un instant.</p></div>';});

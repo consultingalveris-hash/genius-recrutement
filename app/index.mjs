@@ -793,6 +793,25 @@ on('PUT', '/api/rh/applications/:id', async (req, res, { user, params, body }) =
 // Conservation : candidatures effacées 12 mois après leur dépôt.
 setInterval(() => run(`DELETE FROM applications WHERE created_at < ?`, now() - 365 * 864e5), 6 * 3600_000);
 
+/* tableau de bord RH */
+on('GET', '/api/rh/dashboard', async (req, res, { user }) => {
+  const cid = user.company_id, week = now() - 7 * 864e5;
+  const k = {
+    offers: q1(`SELECT COUNT(*) n FROM offers WHERE company_id=? AND status='ouverte'`, cid).n,
+    apps: q1(`SELECT COUNT(*) n FROM applications a JOIN offers o ON o.id=a.offer_id WHERE o.company_id=?`, cid).n,
+    appsWeek: q1(`SELECT COUNT(*) n FROM applications a JOIN offers o ON o.id=a.offer_id WHERE o.company_id=? AND a.created_at>?`, cid, week).n,
+    tests: q1(`SELECT COUNT(*) n FROM tests WHERE company_id=? AND archived=0`, cid).n,
+    done: q1(`SELECT COUNT(*) n FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.status='termine'`, cid).n,
+    avg: q1(`SELECT ROUND(AVG(c.global)) a FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.status='termine'`, cid).a
+  };
+  const latest = qa(`SELECT a.id, a.status, a.created_at, a.offer_id, o.title, u.name, u.photo IS NOT NULL AS hasphoto, k.global, k.status AS tstatus
+    FROM applications a JOIN offers o ON o.id=a.offer_id JOIN cusers u ON u.id=a.cu_id LEFT JOIN candidates k ON k.id=a.candidate_id
+    WHERE o.company_id=? ORDER BY a.created_at DESC LIMIT 6`, cid).map(a => ({ id: a.id, offerId: a.offer_id, title: a.title, name: a.name, status: a.status, createdAt: a.created_at,
+      photo: a.hasphoto ? `/api/rh/applications/${a.id}/photo` : null, score: a.tstatus === 'termine' ? a.global : null }));
+  const results = qa(`SELECT c.id, c.name, c.global, c.ended_at, c.test_id, t.title FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.status='termine' ORDER BY c.ended_at DESC LIMIT 5`, cid);
+  send(res, 200, { k, latest, results });
+}, { auth: true });
+
 const PUB = path.join(ROOT, 'public');
 const SEC_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' };
 const server = http.createServer(async (req, res) => {

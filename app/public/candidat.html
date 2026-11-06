@@ -5,8 +5,9 @@
 <title>Espace candidat — Genius Recrutement</title>
 <meta name="theme-color" content="#0B6E66">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/style.css">
+<script src="/illus.js"></script>
 <style>
 .offer{display:flex;gap:14px;align-items:flex-start;text-decoration:none;color:inherit}
 .co-logo{flex:none;width:56px;height:56px;border-radius:12px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;overflow:hidden;font-weight:800;color:#0B6E66}
@@ -25,6 +26,7 @@
   <nav class="nav" id="nav"></nav>
   <div class="who" id="who"></div>
 </div></header>
+<div class="bandwrap" id="bandtop"></div>
 <main id="app"></main>
 <footer style="text-align:center;padding:20px 16px 36px" class="small muted"><a href="/confidentialite.html">Confidentialité</a> · <a href="/mentions-legales.html">Mentions légales</a> · <a href="/">Vous recrutez ?</a></footer>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -32,6 +34,7 @@
 <script>
 (function(){
 'use strict';
+try{document.getElementById('bandtop').innerHTML=GR.pattern('bt',8);}catch(e){}
 var ME=null, FAM=[], CONTRACTS=[], VAPID='', app=document.getElementById('app'), ROUTE=0;
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function $(s,r){return (r||document).querySelector(s);}
@@ -61,15 +64,18 @@ var V={};
 var F={q:'',family:''};
 V.offres=function(){
   chrome('offres');var rt=ROUTE;
-  app.innerHTML='<div class="wrap col"><div><h1>Offres d’emploi</h1><p class="muted" style="margin-top:4px">'+(ME?'Postulez en un clic avec votre profil.':'Créez votre compte candidat pour postuler en un clic et recevoir les nouvelles offres de votre métier.')+'</p></div>'+
-  (ME&&!ME.family?'<p class="note info">Indiquez votre métier dans <a href="#/profil">Mon profil</a> : vous recevrez les offres qui vous correspondent et les tests vous seront envoyés automatiquement.</p>':'')+
-  '<div class="filters"><input class="in" id="q" placeholder="Poste, entreprise, ville…" value="'+esc(F.q)+'"><select class="in" id="fam"><option value="">Tous les métiers</option>'+FAM.map(function(f){return '<option value="'+f.k+'"'+(F.family===f.k?' selected':'')+'>'+esc(f.name)+'</option>';}).join('')+'</select></div><div id="list" class="col"><p class="muted">Chargement…</p></div></div>';
+  var steps=ME?[['Photo',!!ME.photo],['CV',!!ME.cv],['Métier',!!ME.family],['Téléphone',!!ME.phone]]:[],done=steps.filter(function(x){return x[1];}).length;
+  var hero=ME?'<section class="welcome"><div><h1>Bonjour '+esc(ME.name.split(' ')[0])+'</h1>'+(done<4?'<p>Votre profil est complet à '+Math.round(done*25)+' %. Il manque : '+steps.filter(function(x){return !x[1];}).map(function(x){return x[0].toLowerCase();}).join(', ')+'.</p><div class="meter"><i style="width:'+done*25+'%"></i></div><a class="btn" href="#/profil" style="margin-top:16px;background:var(--mango);color:#2B1A05">Compléter mon profil</a>':'<p>Profil complet : vous pouvez postuler en un clic. '+(ME.alerts?'Les nouvelles offres de votre métier vous seront signalées.':'')+'</p>')+'</div><div class="art">'+GR.person('awa',130)+'</div></section>'
+    :'<section class="welcome"><div><h1>Trouvez un poste à la hauteur de vos compétences</h1><p>Créez votre profil une fois, postulez en un clic et montrez ce que vous savez faire grâce aux tests.</p><a class="btn" href="#/signup" style="margin-top:16px;background:var(--mango);color:#2B1A05">Créer mon profil gratuit</a></div><div class="art">'+GR.person('fatou',130)+'</div></section>';
+  app.innerHTML='<div class="wrap col">'+hero+'<div class="row between"><h2>Offres d’emploi</h2><input class="in" id="q" placeholder="Poste, entreprise, ville…" value="'+esc(F.q)+'" style="max-width:320px"></div>'+
+  '<div class="chips" id="chips"><button class="chip'+(F.family?'':' on')+'" data-f="" style="'+(F.family?'':'background:var(--indigo)')+'">Tous les métiers</button>'+FAM.map(function(f){var on=F.family===f.k;return '<button class="chip'+(on?' on':'')+'" data-f="'+f.k+'" style="'+(on?'background:'+GR.famColor[f.k]:'color:'+GR.famColor[f.k])+'">'+GR.famIcon(f.k,18)+esc(f.name)+'</button>';}).join('')+'</div>'+
+  '<div id="list" class="col"><p class="muted">Chargement…</p></div></div>';
   var t;$('#q').addEventListener('input',function(){F.q=this.value;clearTimeout(t);t=setTimeout(load,250);});
-  $('#fam').addEventListener('change',function(){F.family=this.value;load();});
+  $('#chips').addEventListener('click',function(e){var b=e.target.closest('.chip');if(!b)return;F.family=b.dataset.f;V.offres();});
   function load(){api('GET','/api/offers?q='+encodeURIComponent(F.q)+'&family='+encodeURIComponent(F.family)).then(function(r){if(rt!==ROUTE)return;
-    $('#list').innerHTML=r.offers.length?r.offers.map(function(o){return '<a class="card offer" href="#/offre/'+o.id+'">'+coLogo(o)+'<div class="grow"><div class="row between"><h3>'+esc(o.title)+'</h3>'+(o.applied?'<span class="pill ok">Déjà postulé</span>':'')+'</div>'+
-      '<p class="small muted">'+esc(o.company)+(o.city?' · '+esc(o.city):'')+' · publiée le '+fmtDate(o.createdAt)+'</p><div class="tags">'+(o.contract?'<span class="pill neutral">'+esc(o.contract)+'</span>':'')+'<span class="pill info">'+esc(o.familyName)+'</span>'+(o.hasTest?'<span class="pill neutral">Test en ligne</span>':'')+'</div>'+
-      '<p class="small" style="margin-top:8px;color:var(--fg-2)">'+esc(o.description)+(o.description.length>=220?'…':'')+'</p></div></a>';}).join(''):'<div class="card empty">Aucune offre ne correspond pour le moment. '+(ME&&ME.alerts?'Vous serez prévenu dès qu’une offre de votre métier sera publiée.':'')+'</div>';
+    $('#list').innerHTML=r.offers.length?r.offers.map(function(o){return '<a class="card offer offer-card" style="--fam:'+GR.famColor[o.family]+'" href="#/offre/'+o.id+'">'+coLogo(o)+'<div class="grow"><div class="row between"><h3>'+esc(o.title)+'</h3>'+(o.applied?'<span class="pill ok">Déjà postulé</span>':'')+'</div>'+
+      '<p class="small muted">'+esc(o.company)+(o.city?' · '+esc(o.city):'')+' · publiée le '+fmtDate(o.createdAt)+'</p><div class="tags">'+(o.contract?'<span class="pill neutral">'+esc(o.contract)+'</span>':'')+'<span class="pill" style="background:'+GR.famColor[o.family]+';color:#fff">'+esc(o.familyName)+'</span>'+(o.hasTest?'<span class="pill neutral">Test en ligne</span>':'')+'</div>'+
+      '<p class="small" style="margin-top:8px;color:var(--fg-2)">'+esc(o.description)+(o.description.length>=220?'…':'')+'</p></div></a>';}).join(''):'<div class="card empty">'+GR.empty('offres')+'Aucune offre ne correspond pour le moment. '+(ME&&ME.alerts?'Vous serez prévenu dès qu’une offre de votre métier sera publiée.':'')+'</div>';
   }).catch(function(e){toast(e.message);});}
   load();
 };
@@ -103,7 +109,7 @@ V.candidatures=function(){
   api('GET','/api/cand/applications').then(function(r){if(rt!==ROUTE)return;
     app.innerHTML='<div class="wrap col" style="max-width:860px"><h1>Mes candidatures</h1>'+(r.applications.length?r.applications.map(function(a){var s=(a.status==='test_envoye'&&a.test&&a.test.status==='termine')?['Test terminé','ok']:(STAT[a.status]||[a.status,'neutral']);
       return '<div class="card offer">'+coLogo(a)+'<div class="grow"><div class="row between"><h3><a href="#/offre/'+a.offerId+'" style="color:inherit">'+esc(a.title)+'</a></h3><span class="pill '+s[1]+'">'+s[0]+'</span></div><p class="small muted">'+esc(a.company)+(a.city?' · '+esc(a.city):'')+' · envoyée le '+fmtDate(a.createdAt)+'</p>'+
-      (a.test?(a.test.status==='termine'?'<p class="small" style="margin-top:8px">✓ Test terminé et transmis à l’entreprise.</p>':'<div class="row" style="margin-top:10px"><a class="btn sm primary" href="'+esc(a.test.link)+'">'+(a.test.status==='en_cours'?'Reprendre le test':'Passer le test')+'</a><span class="small muted">À faire d’une traite, au calme.</span></div>'):'')+'</div></div>';}).join(''):'<div class="card empty">Aucune candidature pour l’instant.<br><br><a class="btn primary" href="#/offres">Voir les offres</a></div>')+'</div>';
+      (a.test?(a.test.status==='termine'?'<p class="small" style="margin-top:8px">✓ Test terminé et transmis à l’entreprise.</p>':'<div class="row" style="margin-top:10px"><a class="btn sm primary" href="'+esc(a.test.link)+'">'+(a.test.status==='en_cours'?'Reprendre le test':'Passer le test')+'</a><span class="small muted">À faire d’une traite, au calme.</span></div>'):'')+'</div></div>';}).join(''):'<div class="card empty">'+GR.empty('candidats')+'Aucune candidature pour l’instant.<br><br><a class="btn primary" href="#/offres">Voir les offres</a></div>')+'</div>';
   }).catch(handle);
 };
 
