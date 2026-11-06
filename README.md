@@ -2,7 +2,7 @@
 
 En ligne sur https://recrutement.alveris-consulting.com, sur le VPS LWS qui héberge aussi le CRM.
 
-- `/` : page d'accueil ; `/app` : espace recruteur (comptes entreprise) ; `/t/<lien>` : test du candidat ; `/essai/` : ancienne version d'essai complète (données dans le navigateur).
+- `/` : accueil (deux entrées) ; `/app` : espace RH (tests, offres, candidatures) ; `/espace` : espace candidat (offres, profil avec photo et CV, candidatures, alertes) ; `/t/<lien>` : test du candidat ; `/essai/` : ancienne version d’essai.
 - Application Node 22 (`app/`), base SQLite dans le volume Docker `genius-recrutement-data` : sauvegarde quotidienne dans `/data/backups` (14 jours), et copie hebdomadaire envoyée par e-mail au propriétaire (hors serveur).
 - E-mails : à régler par le propriétaire dans « Mon compte » (service SMTP, par exemple Brevo). Tant que ce n'est pas fait, les messages sont préparés mais ne partent pas, et les recruteurs copient les liens eux-mêmes.
 

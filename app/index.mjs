@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import nodemailer from 'nodemailer';
 import zlib from 'node:zlib';
+import webpush from 'web-push';
 
 const ROOT = path.dirname(new URL(import.meta.url).pathname);
 const PORT = +process.env.PORT || 3000;
@@ -188,7 +189,7 @@ async function offsiteBackup() {
 setTimeout(offsiteBackup, 60_000); setInterval(offsiteBackup, 6 * 3600_000);
 
 /* ---------- HTTP ---------- */
-const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
+const MIME = { '.webmanifest': 'application/manifest+json', '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 function send(res, code, body, headers = {}) {
   const isObj = typeof body === 'object' && !Buffer.isBuffer(body);
   res.writeHead(code, { 'Content-Type': isObj ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
@@ -201,10 +202,10 @@ function serveFile(res, file, extra = {}) {
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ...extra }); res.end(buf);
   });
 }
-async function readJson(req) {
+async function readJson(req, max = 200_000) {
   if (!/application\/json/.test(req.headers['content-type'] || '')) throw Object.assign(new Error('Format attendu : JSON'), { code: 415 });
   let size = 0; const chunks = [];
-  for await (const ch of req) { size += ch.length; if (size > 200_000) throw Object.assign(new Error('Requête trop grande'), { code: 413 }); chunks.push(ch); }
+  for await (const ch of req) { size += ch.length; if (size > max) throw Object.assign(new Error('Requête trop grande'), { code: 413 }); chunks.push(ch); }
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { throw Object.assign(new Error('JSON invalide'), { code: 400 }); }
 }
 function cookies(req) { const o = {}; for (const p of (req.headers.cookie || '').split(';')) { const i = p.indexOf('='); if (i > 0) o[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); } return o; }
@@ -226,7 +227,7 @@ const userOut = u => ({ name: u.name, email: u.email, company: u.company, logo: 
 function candidateOut(c) {
   return { id: c.id, name: c.name, email: c.email, status: c.status, invitedAt: c.invited_at, startedAt: c.started_at, endedAt: c.ended_at,
     global: c.global, scores: c.scores ? JSON.parse(c.scores) : null, secs: c.secs, exits: c.exits, timeout: !!c.timeout, note: c.note || '',
-    link: `${BASE_URL}/t/${c.token}` };
+    link: `${BASE_URL}/t/${c.token}`, photo: c.cu_id ? `/api/candidates/${c.id}/photo` : null };
 }
 function invitationMail(t, c, companyName) {
   const mins = Math.ceil(t.count * t.per_q / 60);
@@ -299,7 +300,7 @@ on('PUT', '/api/company/logo', async (req, res, { user, body }) => {
   if (m[2].length > 400_000) return fail(res, 413, 'Image trop lourde (300 Ko au plus).');
   run(`UPDATE companies SET logo=?, logo_v=? WHERE id=?`, body.dataUrl, now(), user.company_id);
   send(res, 200, { logo: logoUrl(user.company_id) });
-}, { auth: true });
+}, { auth: true, maxBody: 600_000 });
 on('DELETE', '/api/company/logo', async (req, res, { user }) => {
   run(`UPDATE companies SET logo=NULL, logo_v=NULL WHERE id=?`, user.company_id); send(res, 200, { ok: true });
 }, { auth: true });
@@ -395,6 +396,11 @@ on('GET', '/api/candidates/:id', async (req, res, { user, params }) => {
   const t = q1(`SELECT * FROM tests WHERE id=?`, c.test_id);
   const detail = c.qorder ? score(t, JSON.parse(c.qorder), JSON.parse(c.answers || '{}')) : null;
   send(res, 200, { candidate: candidateOut(c), detail });
+}, { auth: true });
+on('GET', '/api/candidates/:id/photo', async (req, res, { user, params }) => {
+  const c = ownCand(user, params.id); const r = c && c.cu_id && q1(`SELECT photo FROM cusers WHERE id=?`, c.cu_id);
+  const m = r && r.photo && /^data:(image\/[a-z]+);base64,(.+)$/.exec(r.photo);
+  if (!m) return send(res, 404, 'Pas de photo'); res.writeHead(200, { 'Content-Type': m[1], 'Cache-Control': 'private, max-age=3600' }); res.end(Buffer.from(m[2], 'base64'));
 }, { auth: true });
 on('GET', '/api/tests/:id/export.csv', async (req, res, { user, params }) => {
   const t = ownTest(user, params.id); if (!t) return fail(res, 404, 'Test introuvable.');
@@ -506,6 +512,287 @@ on('POST', '/api/c/:token/finish', async (req, res, { params }) => {
   send(res, 200, { ok: true });
 });
 
+
+/* =====================================================================
+   ESPACE CANDIDAT : comptes candidats, CV, offres, candidatures, alertes
+   ===================================================================== */
+db.exec(`
+CREATE TABLE IF NOT EXISTS cusers(id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, pass TEXT NOT NULL,
+  phone TEXT, city TEXT, family TEXT, headline TEXT, photo TEXT, cv_name TEXT, cv_at INTEGER, alerts INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS csessions(token TEXT PRIMARY KEY, cu_id INTEGER NOT NULL REFERENCES cusers(id) ON DELETE CASCADE, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS cresets(token TEXT PRIMARY KEY, cu_id INTEGER NOT NULL REFERENCES cusers(id) ON DELETE CASCADE, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS offers(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  test_id INTEGER REFERENCES tests(id) ON DELETE SET NULL, auto_test INTEGER NOT NULL DEFAULT 1, title TEXT NOT NULL, family TEXT NOT NULL,
+  city TEXT, contract TEXT, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'ouverte', created_at INTEGER NOT NULL, closes_at TEXT);
+CREATE TABLE IF NOT EXISTS applications(id INTEGER PRIMARY KEY, offer_id INTEGER NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
+  cu_id INTEGER NOT NULL REFERENCES cusers(id) ON DELETE CASCADE, candidate_id INTEGER REFERENCES candidates(id) ON DELETE SET NULL,
+  message TEXT, status TEXT NOT NULL DEFAULT 'recue', created_at INTEGER NOT NULL, UNIQUE(offer_id, cu_id));
+CREATE TABLE IF NOT EXISTS push_subs(endpoint TEXT PRIMARY KEY, cu_id INTEGER NOT NULL REFERENCES cusers(id) ON DELETE CASCADE, data TEXT NOT NULL, created_at INTEGER NOT NULL);
+`);
+try { db.exec(`ALTER TABLE candidates ADD COLUMN cu_id INTEGER`); } catch {}
+const CV_DIR = path.join(DATA_DIR, 'cv'); fs.mkdirSync(CV_DIR, { recursive: true });
+const CONTRACTS = ['CDI', 'CDD', 'Stage', 'Alternance', 'Consultance', 'Intérim', 'Freelance', 'Temps partiel'];
+const famName = k => (FAMILIES.find(f => f.k === k) || {}).name || '';
+
+// Notifications sur téléphone (Web Push) : clés générées une fois et gardées dans la base.
+let vapid = q1(`SELECT v FROM settings WHERE k='vapid'`);
+vapid = vapid ? JSON.parse(vapid.v) : (() => { const k = webpush.generateVAPIDKeys(); run(`INSERT INTO settings(k,v) VALUES('vapid',?)`, JSON.stringify(k)); return k; })();
+webpush.setVapidDetails('mailto:' + (SUPERADMIN || 'consultingalveris@gmail.com'), vapid.publicKey, vapid.privateKey);
+async function pushTo(cuId, payload) {
+  for (const s of qa(`SELECT * FROM push_subs WHERE cu_id=?`, cuId)) {
+    try { await webpush.sendNotification(JSON.parse(s.data), JSON.stringify(payload), { TTL: 86400 }); }
+    catch (e) { if (e.statusCode === 404 || e.statusCode === 410) run(`DELETE FROM push_subs WHERE endpoint=?`, s.endpoint); }
+  }
+}
+
+/* sessions candidat (cookie séparé de celui des recruteurs) */
+function setCSession(res, cuId) {
+  const tok = rnd(32); run(`INSERT INTO csessions(token,cu_id,expires) VALUES(?,?,?)`, sha(tok), cuId, now() + 60 * 864e5);
+  res.setHeader('Set-Cookie', `gr_c=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 86400}${secure ? '; Secure' : ''}`);
+}
+function currentCand(req) {
+  const tok = cookies(req).gr_c; if (!tok) return null;
+  return q1(`SELECT u.* FROM csessions s JOIN cusers u ON u.id=s.cu_id WHERE s.token=? AND s.expires>?`, sha(tok), now()) || null;
+}
+const candOut = u => ({ id: u.id, name: u.name, email: u.email, phone: u.phone || '', city: u.city || '', family: u.family || '', headline: u.headline || '',
+  photo: u.photo ? `/api/cphoto/${u.id}?v=${u.cv_at || 0}${u.photo.length % 997}` : null, cv: u.cv_name || null, alerts: !!u.alerts });
+const withCand = h => async (req, res, ctx) => { const cu = currentCand(req); if (!cu) return fail(res, 401, 'Connectez-vous à votre espace candidat.'); return h(req, res, { ...ctx, cu }); };
+
+on('POST', '/api/cand/signup', async (req, res, { body }) => {
+  const name = clean(body.name, 120), email = clean(body.email, 200).toLowerCase(), pass = String(body.password || '');
+  if (!name) return fail(res, 400, 'Indiquez votre nom.');
+  if (!isEmail(email)) return fail(res, 400, 'Adresse e-mail invalide.');
+  if (pass.length < 8) return fail(res, 400, 'Le mot de passe doit faire au moins 8 caractères.');
+  if (!body.consent) return fail(res, 400, 'Merci d’accepter la politique de confidentialité.');
+  if (q1(`SELECT id FROM cusers WHERE email=?`, email)) return fail(res, 409, 'Un compte candidat existe déjà avec cette adresse. Utilisez « Mot de passe oublié » si besoin.');
+  const id = run(`INSERT INTO cusers(name,email,pass,phone,city,family,created_at) VALUES(?,?,?,?,?,?,?)`, name, email, hashPass(pass),
+    clean(body.phone, 40), clean(body.city, 80), famOk(body.family) ? body.family : null, now()).lastInsertRowid;
+  setCSession(res, id);
+  sendMail({ to: email, subject: 'Bienvenue dans votre espace candidat', html: mailLayout('Votre espace candidat est prêt',
+    `<p>Bonjour ${esc(name)},</p><p>Complétez votre profil (photo, CV, métier recherché) : vous pourrez postuler en un clic et recevoir une alerte dès qu’une offre de votre domaine est publiée.</p>${button(`${BASE_URL}/espace#/profil`, 'Compléter mon profil')}`) });
+  send(res, 200, { me: candOut(q1(`SELECT * FROM cusers WHERE id=?`, id)) });
+});
+on('POST', '/api/cand/login', async (req, res, { body, ip }) => {
+  const email = clean(body.email, 200).toLowerCase();
+  if (tooMany('cl:' + ip + email)) return fail(res, 429, 'Trop de tentatives. Réessayez dans 15 minutes.');
+  const u = q1(`SELECT * FROM cusers WHERE email=?`, email);
+  if (!u || !checkPass(String(body.password || ''), u.pass)) return fail(res, 401, 'Adresse e-mail ou mot de passe incorrect.');
+  setCSession(res, u.id); send(res, 200, { me: candOut(u) });
+});
+on('POST', '/api/cand/logout', async (req, res) => {
+  const tok = cookies(req).gr_c; if (tok) run(`DELETE FROM csessions WHERE token=?`, sha(tok));
+  res.setHeader('Set-Cookie', 'gr_c=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'); send(res, 200, { ok: true });
+});
+on('GET', '/api/cand/me', async (req, res) => { const cu = currentCand(req); send(res, 200, { me: cu ? candOut(cu) : null, families: FAMILIES, contracts: CONTRACTS, vapid: vapid.publicKey }); });
+on('POST', '/api/cand/forgot', async (req, res, { body, ip }) => {
+  if (tooMany('cf:' + ip)) return fail(res, 429, 'Trop de demandes. Réessayez plus tard.');
+  const u = q1(`SELECT * FROM cusers WHERE email=?`, clean(body.email, 200).toLowerCase());
+  if (u) {
+    const tok = rnd(32); run(`INSERT INTO cresets(token,cu_id,expires) VALUES(?,?,?)`, sha(tok), u.id, now() + 3600_000);
+    await sendMail({ to: u.email, subject: 'Choisir un nouveau mot de passe', html: mailLayout('Nouveau mot de passe',
+      `<p>Bonjour ${esc(u.name)},</p><p>Ce lien est valable une heure.</p>${button(`${BASE_URL}/espace#/reset/${tok}`, 'Choisir un nouveau mot de passe')}`) });
+  }
+  send(res, 200, { ok: true });
+});
+on('POST', '/api/cand/reset', async (req, res, { body }) => {
+  const r = q1(`SELECT * FROM cresets WHERE token=? AND expires>?`, sha(String(body.token || '')), now());
+  if (!r) return fail(res, 400, 'Ce lien n’est plus valable. Refaites une demande.');
+  if (String(body.password || '').length < 8) return fail(res, 400, 'Le mot de passe doit faire au moins 8 caractères.');
+  run(`UPDATE cusers SET pass=? WHERE id=?`, hashPass(String(body.password)), r.cu_id);
+  run(`DELETE FROM cresets WHERE cu_id=?`, r.cu_id); run(`DELETE FROM csessions WHERE cu_id=?`, r.cu_id);
+  setCSession(res, r.cu_id); send(res, 200, { me: candOut(q1(`SELECT * FROM cusers WHERE id=?`, r.cu_id)) });
+});
+on('PUT', '/api/cand/profile', withCand(async (req, res, { cu, body }) => {
+  const name = clean(body.name, 120); if (!name) return fail(res, 400, 'Indiquez votre nom.');
+  run(`UPDATE cusers SET name=?, phone=?, city=?, family=?, headline=?, alerts=? WHERE id=?`, name, clean(body.phone, 40), clean(body.city, 80),
+    famOk(body.family) ? body.family : null, clean(body.headline, 160), body.alerts === false ? 0 : 1, cu.id);
+  send(res, 200, { me: candOut(q1(`SELECT * FROM cusers WHERE id=?`, cu.id)) });
+}));
+on('PUT', '/api/cand/photo', withCand(async (req, res, { cu, body }) => {
+  const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(body.dataUrl || ''));
+  if (!m) return fail(res, 400, 'Format accepté : PNG, JPEG ou WebP.');
+  if (m[2].length > 400_000) return fail(res, 413, 'Photo trop lourde.');
+  run(`UPDATE cusers SET photo=? WHERE id=?`, body.dataUrl, cu.id); send(res, 200, { me: candOut(q1(`SELECT * FROM cusers WHERE id=?`, cu.id)) });
+}), { maxBody: 600_000 });
+on('DELETE', '/api/cand/photo', withCand(async (req, res, { cu }) => { run(`UPDATE cusers SET photo=NULL WHERE id=?`, cu.id); send(res, 200, { me: candOut(q1(`SELECT * FROM cusers WHERE id=?`, cu.id)) }); }));
+on('GET', '/api/cphoto/:id', async (req, res, { params }) => {
+  const r = q1(`SELECT photo FROM cusers WHERE id=?`, +params.id), m = r && r.photo && /^data:(image\/[a-z]+);base64,(.+)$/.exec(r.photo);
+  if (!m) return send(res, 404, 'Pas de photo');
+  res.writeHead(200, { 'Content-Type': m[1], 'Cache-Control': 'private, max-age=86400' }); res.end(Buffer.from(m[2], 'base64'));
+});
+on('PUT', '/api/cand/cv', withCand(async (req, res, { cu, body }) => {
+  const buf = Buffer.from(String(body.data || ''), 'base64');
+  if (buf.length < 100 || buf.subarray(0, 5).toString() !== '%PDF-') return fail(res, 400, 'Le CV doit être un fichier PDF.');
+  if (buf.length > 3 * 1024 * 1024) return fail(res, 413, 'Le CV ne doit pas dépasser 3 Mo.');
+  fs.writeFileSync(path.join(CV_DIR, `${cu.id}.pdf`), buf);
+  run(`UPDATE cusers SET cv_name=?, cv_at=? WHERE id=?`, clean(body.name, 120) || 'CV.pdf', now(), cu.id);
+  send(res, 200, { me: candOut(q1(`SELECT * FROM cusers WHERE id=?`, cu.id)) });
+}), { maxBody: 4_600_000 });
+function sendCv(res, cuId, name) {
+  const f = path.join(CV_DIR, `${cuId}.pdf`); if (!fs.existsSync(f)) return fail(res, 404, 'Pas de CV.');
+  res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${String(name || 'CV.pdf').replace(/[^\w.\- ]/g, '_')}"`, 'Cache-Control': 'private, no-store' });
+  fs.createReadStream(f).pipe(res);
+}
+on('GET', '/api/cand/cv', withCand(async (req, res, { cu }) => sendCv(res, cu.id, cu.cv_name)));
+on('DELETE', '/api/cand/account', withCand(async (req, res, { cu }) => {
+  try { fs.rmSync(path.join(CV_DIR, `${cu.id}.pdf`)); } catch {}
+  run(`UPDATE candidates SET cu_id=NULL WHERE cu_id=?`, cu.id); run(`DELETE FROM cusers WHERE id=?`, cu.id);
+  res.setHeader('Set-Cookie', 'gr_c=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'); send(res, 200, { ok: true });
+}));
+on('POST', '/api/cand/push', withCand(async (req, res, { cu, body }) => {
+  const s = body.subscription; if (!s || !/^https:\/\//.test(s.endpoint || '')) return fail(res, 400, 'Abonnement invalide.');
+  run(`INSERT INTO push_subs(endpoint,cu_id,data,created_at) VALUES(?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET cu_id=excluded.cu_id, data=excluded.data`, s.endpoint, cu.id, JSON.stringify(s), now());
+  pushTo(cu.id, { title: 'Alertes activées', body: 'Vous serez prévenu dès qu’une offre de votre domaine est publiée.', url: '/espace#/offres' });
+  send(res, 200, { ok: true });
+}));
+
+/* offres : lecture publique */
+const offerStatus = o => o.status !== 'ouverte' ? 'fermee' : (o.closes_at && now() > new Date(o.closes_at + 'T23:59:59').getTime() ? 'fermee' : 'ouverte');
+const offerOut = (o, extra = {}) => ({ id: o.id, title: o.title, family: o.family, familyName: famName(o.family), city: o.city || '', contract: o.contract || '',
+  description: o.description, createdAt: o.created_at, closesAt: o.closes_at || '', status: offerStatus(o), company: o.company, companyLogo: o.logo_v ? `/api/logo/${o.company_id}?v=${o.logo_v}` : null,
+  hasTest: !!o.test_id, ...extra });
+on('GET', '/api/offers', async (req, res, { query }) => {
+  const fam = query.get('family'), q = (query.get('q') || '').toLowerCase().trim();
+  let rows = qa(`SELECT o.*, c.name AS company, c.logo_v FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.status='ouverte' ORDER BY o.created_at DESC LIMIT 300`)
+    .filter(o => offerStatus(o) === 'ouverte');
+  if (famOk(fam)) rows = rows.filter(o => o.family === fam);
+  if (q) rows = rows.filter(o => (o.title + ' ' + o.company + ' ' + (o.city || '') + ' ' + o.description).toLowerCase().includes(q));
+  const cu = currentCand(req), mine = cu ? new Set(qa(`SELECT offer_id FROM applications WHERE cu_id=?`, cu.id).map(r => r.offer_id)) : new Set();
+  send(res, 200, { offers: rows.map(o => offerOut(o, { applied: mine.has(o.id), description: o.description.slice(0, 220) })) });
+});
+on('GET', '/api/offers/:id', async (req, res, { params }) => {
+  const o = q1(`SELECT o.*, c.name AS company, c.logo_v FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=?`, +params.id);
+  if (!o) return fail(res, 404, 'Offre introuvable.');
+  const cu = currentCand(req);
+  send(res, 200, { offer: offerOut(o, { applied: !!(cu && q1(`SELECT id FROM applications WHERE offer_id=? AND cu_id=?`, o.id, cu.id)) }) });
+});
+
+/* candidature en un clic */
+async function inviteFromApplication(app, o, cu) {
+  const t = q1(`SELECT * FROM tests WHERE id=?`, o.test_id); if (!t) return null;
+  let c = q1(`SELECT * FROM candidates WHERE test_id=? AND email=?`, t.id, cu.email);
+  if (!c) {
+    const token = rnd(18);
+    const id = run(`INSERT INTO candidates(test_id,name,email,token,invited_at,cu_id) VALUES(?,?,?,?,?,?)`, t.id, cu.name, cu.email, token, now(), cu.id).lastInsertRowid;
+    c = q1(`SELECT * FROM candidates WHERE id=?`, id);
+  }
+  run(`UPDATE applications SET candidate_id=?, status='test_envoye' WHERE id=?`, c.id, app.id);
+  const co = q1(`SELECT name FROM companies WHERE id=?`, t.company_id);
+  await sendMail({ to: cu.email, companyId: t.company_id, replyTo: t.reply_email, subject: `${co.name} : votre test pour le poste ${o.title}`, html: invitationMail(t, c, co.name) });
+  pushTo(cu.id, { title: `Test à passer : ${o.title}`, body: `${co.name} vous invite à passer un test.`, url: `/t/${c.token}` });
+  return c;
+}
+on('POST', '/api/offers/:id/apply', withCand(async (req, res, { cu, params, body }) => {
+  const o = q1(`SELECT o.*, c.name AS company FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=?`, +params.id);
+  if (!o || offerStatus(o) !== 'ouverte') return fail(res, 404, 'Cette offre n’est plus ouverte.');
+  if (q1(`SELECT id FROM applications WHERE offer_id=? AND cu_id=?`, o.id, cu.id)) return fail(res, 409, 'Vous avez déjà postulé à cette offre.');
+  const id = run(`INSERT INTO applications(offer_id,cu_id,message,created_at) VALUES(?,?,?,?)`, o.id, cu.id, clean(body.message, 1500), now()).lastInsertRowid;
+  const app = q1(`SELECT * FROM applications WHERE id=?`, id);
+  let tested = null;
+  if (o.test_id && o.auto_test && cu.family && cu.family === o.family) tested = await inviteFromApplication(app, o, cu);
+  const t = o.test_id ? q1(`SELECT reply_email FROM tests WHERE id=?`, o.test_id) : null;
+  const to = t?.reply_email || q1(`SELECT email FROM users WHERE company_id=? ORDER BY id LIMIT 1`, o.company_id)?.email;
+  if (to) sendMail({ to, companyId: o.company_id, subject: `Nouvelle candidature : ${cu.name} — ${o.title}`, html: mailLayout('Nouvelle candidature',
+    `<p><b>${esc(cu.name)}</b> a postulé à l’offre <b>${esc(o.title)}</b>.${tested ? '<br>Son profil correspond au métier : le test lui a été envoyé automatiquement.' : ''}</p>${button(`${BASE_URL}/app#/offres/${o.id}`, 'Voir la candidature')}`, o.company_id) });
+  send(res, 200, { ok: true, testSent: !!tested, link: tested ? `/t/${tested.token}` : null });
+}));
+on('GET', '/api/cand/applications', withCand(async (req, res, { cu }) => {
+  const rows = qa(`SELECT a.*, o.title, o.city, o.contract, o.family, o.status AS ostatus, o.closes_at, c.name AS company, c.logo_v, o.company_id,
+    k.status AS tstatus, k.token FROM applications a JOIN offers o ON o.id=a.offer_id JOIN companies c ON c.id=o.company_id
+    LEFT JOIN candidates k ON k.id=a.candidate_id WHERE a.cu_id=? ORDER BY a.created_at DESC`, cu.id);
+  send(res, 200, { applications: rows.map(r => ({ id: r.id, offerId: r.offer_id, title: r.title, company: r.company, city: r.city || '', contract: r.contract || '',
+    companyLogo: r.logo_v ? `/api/logo/${r.company_id}?v=${r.logo_v}` : null, status: r.status, createdAt: r.created_at,
+    test: r.token ? { status: r.tstatus, link: `/t/${r.token}` } : null })) });
+}));
+
+/* côté recruteur : offres et candidatures */
+const ownOffer = (user, id) => q1(`SELECT * FROM offers WHERE id=? AND company_id=?`, +id, user.company_id);
+function readOffer(body, user) {
+  const title = clean(body.title, 160), family = famOk(body.family) ? body.family : null, description = clean(body.description, 6000);
+  if (!title) throw Object.assign(new Error('Indiquez l’intitulé du poste.'), { code: 400 });
+  if (!family) throw Object.assign(new Error('Choisissez le métier.'), { code: 400 });
+  if (description.length < 30) throw Object.assign(new Error('Décrivez le poste en quelques lignes (30 caractères au moins).'), { code: 400 });
+  const testId = body.testId ? +body.testId : null;
+  if (testId && !q1(`SELECT id FROM tests WHERE id=? AND company_id=?`, testId, user.company_id)) throw Object.assign(new Error('Test introuvable.'), { code: 400 });
+  return { title, family, description, testId, auto: body.autoTest === false ? 0 : 1, city: clean(body.city, 80), contract: CONTRACTS.includes(body.contract) ? body.contract : '',
+    closes: /^\d{4}-\d{2}-\d{2}$/.test(body.closesAt || '') ? body.closesAt : null };
+}
+async function announce(o, companyName) {
+  // Alerte aux candidats du même métier qui l'ont demandée : e-mail + notification sur le téléphone.
+  const list = qa(`SELECT * FROM cusers WHERE alerts=1 AND family=?`, o.family);
+  for (const cu of list) {
+    pushTo(cu.id, { title: `Nouvelle offre : ${o.title}`, body: `${companyName}${o.city ? ' — ' + o.city : ''}${o.contract ? ' · ' + o.contract : ''}`, url: `/espace#/offre/${o.id}` });
+    await sendMail({ to: cu.email, subject: `Nouvelle offre : ${o.title} (${companyName})`, html: mailLayout('Une offre correspond à votre profil',
+      `<p>Bonjour ${esc(cu.name)},</p><p><b>${esc(companyName)}</b> recrute : <b>${esc(o.title)}</b>${o.city ? ' à ' + esc(o.city) : ''}${o.contract ? ' (' + esc(o.contract) + ')' : ''}.</p>${button(`${BASE_URL}/espace#/offre/${o.id}`, 'Voir l’offre et postuler')}<p style="font-size:12px;color:#4A5565">Vous recevez ce message car vous avez activé les alertes dans votre espace candidat.</p>`, o.company_id) });
+  }
+  return list.length;
+}
+on('GET', '/api/rh/offers', async (req, res, { user }) => {
+  const rows = qa(`SELECT o.*, (SELECT COUNT(*) FROM applications a WHERE a.offer_id=o.id) AS n FROM offers o WHERE o.company_id=? ORDER BY o.created_at DESC`, user.company_id);
+  send(res, 200, { offers: rows.map(o => ({ ...offerOut(o), testId: o.test_id, autoTest: !!o.auto_test, applications: o.n })), contracts: CONTRACTS });
+}, { auth: true });
+on('POST', '/api/rh/offers', async (req, res, { user, body }) => {
+  const b = readOffer(body, user);
+  const id = run(`INSERT INTO offers(company_id,test_id,auto_test,title,family,city,contract,description,created_at,closes_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+    user.company_id, b.testId, b.auto, b.title, b.family, b.city, b.contract, b.description, now(), b.closes).lastInsertRowid;
+  const n = await announce(q1(`SELECT * FROM offers WHERE id=?`, id), user.company);
+  send(res, 200, { id, alerted: n });
+}, { auth: true });
+on('PUT', '/api/rh/offers/:id', async (req, res, { user, params, body }) => {
+  const o = ownOffer(user, params.id); if (!o) return fail(res, 404, 'Offre introuvable.');
+  if (body.status && Object.keys(body).length === 1) { run(`UPDATE offers SET status=? WHERE id=?`, body.status === 'ouverte' ? 'ouverte' : 'fermee', o.id); return send(res, 200, { ok: true }); }
+  const b = readOffer(body, user);
+  run(`UPDATE offers SET test_id=?,auto_test=?,title=?,family=?,city=?,contract=?,description=?,closes_at=? WHERE id=?`, b.testId, b.auto, b.title, b.family, b.city, b.contract, b.description, b.closes, o.id);
+  send(res, 200, { ok: true });
+}, { auth: true });
+on('DELETE', '/api/rh/offers/:id', async (req, res, { user, params }) => {
+  const o = ownOffer(user, params.id); if (!o) return fail(res, 404, 'Offre introuvable.'); run(`DELETE FROM offers WHERE id=?`, o.id); send(res, 200, { ok: true });
+}, { auth: true });
+on('GET', '/api/rh/offers/:id', async (req, res, { user, params }) => {
+  const o = ownOffer(user, params.id); if (!o) return fail(res, 404, 'Offre introuvable.');
+  const apps = qa(`SELECT a.*, u.name, u.email, u.phone, u.city, u.family, u.headline, u.cv_name, u.photo IS NOT NULL AS hasphoto, u.cv_at,
+    k.status AS tstatus, k.global, k.scores, k.secs, k.token FROM applications a JOIN cusers u ON u.id=a.cu_id LEFT JOIN candidates k ON k.id=a.candidate_id
+    WHERE a.offer_id=? ORDER BY (k.global IS NULL), k.global DESC, a.created_at DESC`, o.id);
+  send(res, 200, { offer: { ...offerOut(o), testId: o.test_id, autoTest: !!o.auto_test }, applications: apps.map(a => ({ id: a.id, name: a.name, email: a.email, phone: a.phone || '',
+    city: a.city || '', familyName: famName(a.family), headline: a.headline || '', message: a.message || '', status: a.status, createdAt: a.created_at,
+    photo: a.hasphoto ? `/api/rh/applications/${a.id}/photo` : null, cv: a.cv_name ? `/api/rh/applications/${a.id}/cv` : null,
+    test: a.token ? { status: a.tstatus, global: a.global, scores: a.scores ? JSON.parse(a.scores) : null, secs: a.secs } : null })) });
+}, { auth: true });
+const ownApp = (user, id) => q1(`SELECT a.*, o.company_id, o.test_id, o.title, o.family FROM applications a JOIN offers o ON o.id=a.offer_id WHERE a.id=? AND o.company_id=?`, +id, user.company_id);
+on('GET', '/api/rh/applications/:id/cv', async (req, res, { user, params }) => {
+  const a = ownApp(user, params.id); if (!a) return fail(res, 404, 'Candidature introuvable.');
+  const u = q1(`SELECT cv_name FROM cusers WHERE id=?`, a.cu_id); sendCv(res, a.cu_id, u?.cv_name);
+}, { auth: true });
+on('GET', '/api/rh/applications/:id/photo', async (req, res, { user, params }) => {
+  const a = ownApp(user, params.id); if (!a) return fail(res, 404, 'Candidature introuvable.');
+  const r = q1(`SELECT photo FROM cusers WHERE id=?`, a.cu_id), m = r && r.photo && /^data:(image\/[a-z]+);base64,(.+)$/.exec(r.photo);
+  if (!m) return send(res, 404, 'Pas de photo'); res.writeHead(200, { 'Content-Type': m[1], 'Cache-Control': 'private, max-age=3600' }); res.end(Buffer.from(m[2], 'base64'));
+}, { auth: true });
+on('POST', '/api/rh/applications/:id/invite', async (req, res, { user, params, body }) => {
+  const a = ownApp(user, params.id); if (!a) return fail(res, 404, 'Candidature introuvable.');
+  const o = q1(`SELECT * FROM offers WHERE id=?`, a.offer_id);
+  if (body.testId) { if (!q1(`SELECT id FROM tests WHERE id=? AND company_id=?`, +body.testId, user.company_id)) return fail(res, 400, 'Test introuvable.'); o.test_id = +body.testId; }
+  if (!o.test_id) return fail(res, 400, 'Associez d’abord un test à cette offre.');
+  const cu = q1(`SELECT * FROM cusers WHERE id=?`, a.cu_id);
+  const c = await inviteFromApplication(a, o, cu); send(res, 200, { ok: !!c });
+}, { auth: true });
+on('PUT', '/api/rh/applications/:id', async (req, res, { user, params, body }) => {
+  const a = ownApp(user, params.id); if (!a) return fail(res, 404, 'Candidature introuvable.');
+  const st = { retenue: 'retenue', refusee: 'refusee', recue: 'recue' }[body.status]; if (!st) return fail(res, 400, 'Statut inconnu.');
+  run(`UPDATE applications SET status=? WHERE id=?`, st, a.id);
+  const cu = q1(`SELECT * FROM cusers WHERE id=?`, a.cu_id), co = q1(`SELECT name FROM companies WHERE id=?`, a.company_id);
+  if (st !== 'recue' && body.notify !== false) {
+    const txt = st === 'retenue' ? `Bonne nouvelle : votre candidature au poste <b>${esc(a.title)}</b> a été retenue par ${esc(co.name)}. L’entreprise va vous contacter pour la suite.`
+      : `Merci pour l’intérêt porté au poste <b>${esc(a.title)}</b>. ${esc(co.name)} a choisi de ne pas donner suite à votre candidature. Nous vous souhaitons pleine réussite dans vos recherches.`;
+    sendMail({ to: cu.email, companyId: a.company_id, subject: `${co.name} : réponse à votre candidature (${a.title})`, html: mailLayout('Réponse à votre candidature', `<p>Bonjour ${esc(cu.name)},</p><p>${txt}</p>`, a.company_id) });
+    pushTo(cu.id, { title: `Réponse : ${a.title}`, body: st === 'retenue' ? 'Votre candidature a été retenue.' : 'Votre candidature n’a pas été retenue.', url: '/espace#/candidatures' });
+  }
+  send(res, 200, { ok: true });
+}, { auth: true });
+
+// Conservation : candidatures effacées 12 mois après leur dépôt.
+setInterval(() => run(`DELETE FROM applications WHERE created_at < ?`, now() - 365 * 864e5), 6 * 3600_000);
+
 const PUB = path.join(ROOT, 'public');
 const SEC_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' };
 const server = http.createServer(async (req, res) => {
@@ -518,7 +805,7 @@ const server = http.createServer(async (req, res) => {
         if (r.method !== req.method) continue; const m = p.match(r.re); if (!m) continue;
         const user = currentUser(req);
         if (r.opts.auth && !user) return fail(res, 401, 'Connectez-vous pour continuer.');
-        const body = ['POST', 'PUT'].includes(req.method) ? await readJson(req) : {};
+        const body = ['POST', 'PUT'].includes(req.method) ? await readJson(req, r.opts.maxBody) : {};
         return await r.handler(req, res, { user, body, params: m.groups || {}, ip, query: url.searchParams });
       }
       return fail(res, 404, 'Adresse inconnue.');
@@ -526,6 +813,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/' || p === '/index.html') return serveFile(res, path.join(PUB, 'index.html'));
     if (p === '/app' || p === '/app/') return serveFile(res, path.join(PUB, 'app.html'));
     if (/^\/t\/[\w-]+$/.test(p)) return serveFile(res, path.join(PUB, 'test.html'), { 'X-Robots-Tag': 'noindex' });
+    if (p === '/espace' || p === '/espace/' || p === '/offres') return serveFile(res, path.join(PUB, 'candidat.html'));
     if (p === '/confidentialite') return serveFile(res, path.join(PUB, 'confidentialite.html'));
     if (p === '/mentions-legales') return serveFile(res, path.join(PUB, 'mentions-legales.html'));
     if (p === '/essai') { res.writeHead(301, { Location: '/essai/' }); return res.end(); }
