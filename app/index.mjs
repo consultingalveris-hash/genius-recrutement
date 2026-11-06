@@ -47,6 +47,8 @@ try { db.exec(`ALTER TABLE companies ADD COLUMN logo TEXT`); } catch {}
 try { db.exec(`ALTER TABLE companies ADD COLUMN logo_v INTEGER`); } catch {}
 for (const sql of [`ALTER TABLE tests ADD COLUMN family TEXT NOT NULL DEFAULT 'cc'`, `ALTER TABLE candidates ADD COLUMN perms TEXT`,
   `ALTER TABLE candidates ADD COLUMN qtime TEXT`, `ALTER TABLE candidates ADD COLUMN cur TEXT`, `ALTER TABLE candidates ADD COLUMN cur_since INTEGER`]) { try { db.exec(sql); } catch {} }
+for (const sql of [`ALTER TABLE companies ADD COLUMN status TEXT NOT NULL DEFAULT 'valide'`, `ALTER TABLE users ADD COLUMN verified INTEGER NOT NULL DEFAULT 1`]) { try { db.exec(sql); } catch {} }
+db.exec(`CREATE TABLE IF NOT EXISTS verifs(token TEXT PRIMARY KEY, kind TEXT NOT NULL, ref_id INTEGER NOT NULL, expires INTEGER NOT NULL)`);
 const q1 = (sql, ...a) => db.prepare(sql).get(...a);
 const qa = (sql, ...a) => db.prepare(sql).all(...a);
 const run = (sql, ...a) => db.prepare(sql).run(...a);
@@ -216,13 +218,26 @@ function setSession(res, userId) {
 }
 function currentUser(req) {
   const tok = cookies(req).gr_s; if (!tok) return null;
-  return q1(`SELECT u.id,u.name,u.email,u.company_id,c.name AS company FROM sessions s JOIN users u ON u.id=s.user_id JOIN companies c ON c.id=u.company_id WHERE s.token=? AND s.expires>?`, sha(tok), now()) || null;
+  return q1(`SELECT u.id,u.name,u.email,u.company_id,u.verified,c.name AS company,c.status AS cstatus FROM sessions s JOIN users u ON u.id=s.user_id JOIN companies c ON c.id=u.company_id WHERE s.token=? AND s.expires>?`, sha(tok), now()) || null;
 }
 const attempts = new Map();
 function tooMany(key) {
   const t = now(), a = (attempts.get(key) || []).filter(x => t - x < 15 * 60_000); a.push(t); attempts.set(key, a); return a.length > 10;
 }
-const userOut = u => ({ name: u.name, email: u.email, company: u.company, logo: logoUrl(u.company_id), superadmin: !!SUPERADMIN && u.email === SUPERADMIN });
+const isSuper = u => !!SUPERADMIN && u.email === SUPERADMIN;
+const userOut = u => ({ name: u.name, email: u.email, company: u.company, logo: logoUrl(u.company_id), superadmin: isSuper(u), verified: !!u.verified, companyStatus: u.cstatus || 'valide' });
+// Peut envoyer des e-mails aux candidats et publier des offres visibles : adresse confirmée et entreprise validée.
+const canReach = u => isSuper(u) || (!!u.verified && u.cstatus === 'valide');
+const reachMsg = u => !u.verified ? 'Confirmez d’abord votre adresse e-mail (lien reçu à l’inscription) : les envois aux candidats seront alors possibles.'
+  : u.cstatus === 'suspendue' ? 'Le compte de votre entreprise est suspendu. Contactez consultingalveris@gmail.com.'
+  : 'Votre entreprise est en cours de vérification (sous 24 heures ouvrées). Les envois aux candidats seront possibles dès la validation.';
+async function sendVerify(kind, id, email, name) {
+  // Sans serveur d'envoi configuré, personne ne pourrait confirmer : on ne bloque alors pas le compte.
+  if (!getTransport()) { run(kind === 'user' ? `UPDATE users SET verified=1 WHERE id=?` : `UPDATE cusers SET verified=1 WHERE id=?`, id); return { sent: false, test: true }; }
+  const tok = rnd(32); run(`INSERT INTO verifs(token,kind,ref_id,expires) VALUES(?,?,?,?)`, sha(tok), kind, id, now() + 3 * 864e5);
+  return sendMail({ to: email, subject: 'Confirmez votre adresse e-mail', html: mailLayout('Confirmez votre adresse e-mail',
+    `<p>Bonjour ${esc(name)},</p><p>Cliquez sur le bouton pour confirmer que cette adresse est bien la vôtre. Ce lien est valable 3 jours.</p>${button(`${BASE_URL}/verifier/${tok}`, 'Confirmer mon adresse')}<p style="font-size:13px;color:#4A5565">Si vous n’êtes pas à l’origine de cette inscription, ignorez ce message.</p>`) });
+}
 
 function candidateOut(c) {
   return { id: c.id, name: c.name, email: c.email, status: c.status, invitedAt: c.invited_at, startedAt: c.started_at, endedAt: c.ended_at,
@@ -247,14 +262,18 @@ on('POST', '/api/signup', async (req, res, { body }) => {
   if (!isEmail(email)) return fail(res, 400, 'Adresse e-mail invalide.');
   if (pass.length < 8) return fail(res, 400, 'Le mot de passe doit faire au moins 8 caractères.');
   if (q1(`SELECT id FROM users WHERE email=?`, email)) return fail(res, 409, 'Un compte existe déjà avec cette adresse. Utilisez « Mot de passe oublié » si besoin.');
-  const cid = run(`INSERT INTO companies(name,created_at) VALUES(?,?)`, company, now()).lastInsertRowid;
-  const uid = run(`INSERT INTO users(company_id,name,email,pass,created_at) VALUES(?,?,?,?,?)`, cid, name, email, hashPass(pass), now()).lastInsertRowid;
+  const boss = !!SUPERADMIN && email === SUPERADMIN;
+  const cid = run(`INSERT INTO companies(name,created_at,status) VALUES(?,?,?)`, company, now(), boss ? 'valide' : 'en_attente').lastInsertRowid;
+  const uid = run(`INSERT INTO users(company_id,name,email,pass,created_at,verified) VALUES(?,?,?,?,?,?)`, cid, name, email, hashPass(pass), now(), boss ? 1 : 0).lastInsertRowid;
   setSession(res, uid);
-  sendMail({ to: email, companyId: cid, subject: 'Bienvenue sur Genius Recrutement',
-    html: mailLayout('Votre compte est prêt', `<p>Bonjour ${esc(name)},</p><p>Le compte de <b>${esc(company)}</b> est créé. Vous pouvez préparer votre premier test et y inviter vos candidats.</p>${button(`${BASE_URL}/app`, 'Ouvrir Genius Recrutement')}`) });
+  if (!boss) {
+    sendVerify('user', uid, email, name);
+    if (SUPERADMIN) sendMail({ to: SUPERADMIN, subject: `Nouvelle entreprise à valider : ${company}`, html: mailLayout('Nouvelle entreprise inscrite',
+      `<p><b>${esc(company)}</b> vient de créer un compte (${esc(name)}, ${esc(email)}).</p><p>Vérifiez qu’il s’agit d’une vraie entreprise avant de valider : ses offres ne seront visibles qu’après votre accord.</p>${button(`${BASE_URL}/app#/admin`, 'Ouvrir l’administration')}`) });
+  }
   send(res, 200, { user: userOut(currentUserById(uid)) });
 });
-const currentUserById = id => q1(`SELECT u.id,u.name,u.email,u.company_id,c.name AS company FROM users u JOIN companies c ON c.id=u.company_id WHERE u.id=?`, id);
+const currentUserById = id => q1(`SELECT u.id,u.name,u.email,u.company_id,u.verified,c.name AS company,c.status AS cstatus FROM users u JOIN companies c ON c.id=u.company_id WHERE u.id=?`, id);
 on('POST', '/api/login', async (req, res, { body, ip }) => {
   const email = clean(body.email, 200).toLowerCase();
   if (tooMany('l:' + ip + email)) return fail(res, 429, 'Trop de tentatives. Réessayez dans 15 minutes.');
@@ -362,6 +381,7 @@ on('POST', '/api/tests/:id/invite', async (req, res, { user, params, body }) => 
   const t = ownTest(user, params.id); if (!t) return fail(res, 404, 'Test introuvable.');
   const list = Array.isArray(body.candidates) ? body.candidates.slice(0, 300) : [];
   const out = { added: 0, sent: 0, test: 0, failed: 0, skipped: [] };
+  if (body.send !== false && !canReach(user)) { body.send = false; out.blocked = reachMsg(user); }
   for (const x of list) {
     const name = clean(x.name, 120), email = clean(x.email, 200).toLowerCase();
     if (!name || !isEmail(email)) { out.skipped.push(`${name || '?'} <${email || '?'}> : nom ou e-mail invalide`); continue; }
@@ -379,6 +399,7 @@ on('POST', '/api/tests/:id/invite', async (req, res, { user, params, body }) => 
 const ownCand = (user, id) => q1(`SELECT c.*, t.company_id FROM candidates c JOIN tests t ON t.id=c.test_id WHERE c.id=? AND t.company_id=?`, +id, user.company_id);
 on('POST', '/api/candidates/:id/resend', async (req, res, { user, params }) => {
   const c = ownCand(user, params.id); if (!c) return fail(res, 404, 'Candidat introuvable.');
+  if (!canReach(user)) return fail(res, 403, reachMsg(user));
   const t = q1(`SELECT * FROM tests WHERE id=?`, c.test_id);
   const r = await sendMail({ to: c.email, companyId: t.company_id, replyTo: t.reply_email, subject: `Rappel — ${user.company} : votre test pour le poste ${t.title}`, html: invitationMail(t, c, user.company) });
   send(res, 200, r);
@@ -530,6 +551,8 @@ CREATE TABLE IF NOT EXISTS applications(id INTEGER PRIMARY KEY, offer_id INTEGER
 CREATE TABLE IF NOT EXISTS push_subs(endpoint TEXT PRIMARY KEY, cu_id INTEGER NOT NULL REFERENCES cusers(id) ON DELETE CASCADE, data TEXT NOT NULL, created_at INTEGER NOT NULL);
 `);
 try { db.exec(`ALTER TABLE candidates ADD COLUMN cu_id INTEGER`); } catch {}
+try { db.exec(`ALTER TABLE cusers ADD COLUMN verified INTEGER NOT NULL DEFAULT 1`); } catch {}
+try { db.exec(`ALTER TABLE offers ADD COLUMN announced INTEGER NOT NULL DEFAULT 1`); } catch {}
 const CV_DIR = path.join(DATA_DIR, 'cv'); fs.mkdirSync(CV_DIR, { recursive: true });
 const CONTRACTS = ['CDI', 'CDD', 'Stage', 'Alternance', 'Consultance', 'Intérim', 'Freelance', 'Temps partiel'];
 const famName = k => (FAMILIES.find(f => f.k === k) || {}).name || '';
@@ -555,7 +578,7 @@ function currentCand(req) {
   return q1(`SELECT u.* FROM csessions s JOIN cusers u ON u.id=s.cu_id WHERE s.token=? AND s.expires>?`, sha(tok), now()) || null;
 }
 const candOut = u => ({ id: u.id, name: u.name, email: u.email, phone: u.phone || '', city: u.city || '', family: u.family || '', headline: u.headline || '',
-  photo: u.photo ? `/api/cphoto/${u.id}?v=${u.cv_at || 0}${u.photo.length % 997}` : null, cv: u.cv_name || null, alerts: !!u.alerts });
+  photo: u.photo ? `/api/cphoto/${u.id}?v=${u.cv_at || 0}${u.photo.length % 997}` : null, cv: u.cv_name || null, alerts: !!u.alerts, verified: !!u.verified });
 const withCand = h => async (req, res, ctx) => { const cu = currentCand(req); if (!cu) return fail(res, 401, 'Connectez-vous à votre espace candidat.'); return h(req, res, { ...ctx, cu }); };
 
 on('POST', '/api/cand/signup', async (req, res, { body }) => {
@@ -565,11 +588,10 @@ on('POST', '/api/cand/signup', async (req, res, { body }) => {
   if (pass.length < 8) return fail(res, 400, 'Le mot de passe doit faire au moins 8 caractères.');
   if (!body.consent) return fail(res, 400, 'Merci d’accepter la politique de confidentialité.');
   if (q1(`SELECT id FROM cusers WHERE email=?`, email)) return fail(res, 409, 'Un compte candidat existe déjà avec cette adresse. Utilisez « Mot de passe oublié » si besoin.');
-  const id = run(`INSERT INTO cusers(name,email,pass,phone,city,family,created_at) VALUES(?,?,?,?,?,?,?)`, name, email, hashPass(pass),
+  const id = run(`INSERT INTO cusers(name,email,pass,phone,city,family,created_at,verified) VALUES(?,?,?,?,?,?,?,0)`, name, email, hashPass(pass),
     clean(body.phone, 40), clean(body.city, 80), famOk(body.family) ? body.family : null, now()).lastInsertRowid;
   setCSession(res, id);
-  sendMail({ to: email, subject: 'Bienvenue dans votre espace candidat', html: mailLayout('Votre espace candidat est prêt',
-    `<p>Bonjour ${esc(name)},</p><p>Complétez votre profil (photo, CV, métier recherché) : vous pourrez postuler en un clic et recevoir une alerte dès qu’une offre de votre domaine est publiée.</p>${button(`${BASE_URL}/espace#/profil`, 'Compléter mon profil')}`) });
+  sendVerify('cand', id, email, name);
   send(res, 200, { me: candOut(q1(`SELECT * FROM cusers WHERE id=?`, id)) });
 });
 on('POST', '/api/cand/login', async (req, res, { body, ip }) => {
@@ -653,7 +675,7 @@ const offerOut = (o, extra = {}) => ({ id: o.id, title: o.title, family: o.famil
   hasTest: !!o.test_id, ...extra });
 on('GET', '/api/offers', async (req, res, { query }) => {
   const fam = query.get('family'), q = (query.get('q') || '').toLowerCase().trim();
-  let rows = qa(`SELECT o.*, c.name AS company, c.logo_v FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.status='ouverte' ORDER BY o.created_at DESC LIMIT 300`)
+  let rows = qa(`SELECT o.*, c.name AS company, c.logo_v FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.status='ouverte' AND c.status='valide' ORDER BY o.created_at DESC LIMIT 300`)
     .filter(o => offerStatus(o) === 'ouverte');
   if (famOk(fam)) rows = rows.filter(o => o.family === fam);
   if (q) rows = rows.filter(o => (o.title + ' ' + o.company + ' ' + (o.city || '') + ' ' + o.description).toLowerCase().includes(q));
@@ -661,7 +683,7 @@ on('GET', '/api/offers', async (req, res, { query }) => {
   send(res, 200, { offers: rows.map(o => offerOut(o, { applied: mine.has(o.id), description: o.description.slice(0, 220) })) });
 });
 on('GET', '/api/offers/:id', async (req, res, { params }) => {
-  const o = q1(`SELECT o.*, c.name AS company, c.logo_v FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=?`, +params.id);
+  const o = q1(`SELECT o.*, c.name AS company, c.logo_v FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=? AND c.status='valide'`, +params.id);
   if (!o) return fail(res, 404, 'Offre introuvable.');
   const cu = currentCand(req);
   send(res, 200, { offer: offerOut(o, { applied: !!(cu && q1(`SELECT id FROM applications WHERE offer_id=? AND cu_id=?`, o.id, cu.id)) }) });
@@ -683,8 +705,9 @@ async function inviteFromApplication(app, o, cu) {
   return c;
 }
 on('POST', '/api/offers/:id/apply', withCand(async (req, res, { cu, params, body }) => {
-  const o = q1(`SELECT o.*, c.name AS company FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=?`, +params.id);
-  if (!o || offerStatus(o) !== 'ouverte') return fail(res, 404, 'Cette offre n’est plus ouverte.');
+  const o = q1(`SELECT o.*, c.name AS company, c.status AS cstatus FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=?`, +params.id);
+  if (!o || offerStatus(o) !== 'ouverte' || o.cstatus !== 'valide') return fail(res, 404, 'Cette offre n’est plus ouverte.');
+  if (!cu.verified) return fail(res, 403, 'Confirmez d’abord votre adresse e-mail : cliquez sur le lien reçu à l’inscription (pensez aux courriers indésirables).');
   if (q1(`SELECT id FROM applications WHERE offer_id=? AND cu_id=?`, o.id, cu.id)) return fail(res, 409, 'Vous avez déjà postulé à cette offre.');
   const id = run(`INSERT INTO applications(offer_id,cu_id,message,created_at) VALUES(?,?,?,?)`, o.id, cu.id, clean(body.message, 1500), now()).lastInsertRowid;
   const app = q1(`SELECT * FROM applications WHERE id=?`, id);
@@ -719,13 +742,21 @@ function readOffer(body, user) {
 }
 async function announce(o, companyName) {
   // Alerte aux candidats du même métier qui l'ont demandée : e-mail + notification sur le téléphone.
-  const list = qa(`SELECT * FROM cusers WHERE alerts=1 AND family=?`, o.family);
+  run(`UPDATE offers SET announced=1 WHERE id=?`, o.id);
+  const list = qa(`SELECT * FROM cusers WHERE alerts=1 AND verified=1 AND family=?`, o.family);
   for (const cu of list) {
     pushTo(cu.id, { title: `Nouvelle offre : ${o.title}`, body: `${companyName}${o.city ? ' — ' + o.city : ''}${o.contract ? ' · ' + o.contract : ''}`, url: `/espace#/offre/${o.id}` });
     await sendMail({ to: cu.email, subject: `Nouvelle offre : ${o.title} (${companyName})`, html: mailLayout('Une offre correspond à votre profil',
       `<p>Bonjour ${esc(cu.name)},</p><p><b>${esc(companyName)}</b> recrute : <b>${esc(o.title)}</b>${o.city ? ' à ' + esc(o.city) : ''}${o.contract ? ' (' + esc(o.contract) + ')' : ''}.</p>${button(`${BASE_URL}/espace#/offre/${o.id}`, 'Voir l’offre et postuler')}<p style="font-size:12px;color:#4A5565">Vous recevez ce message car vous avez activé les alertes dans votre espace candidat.</p>`, o.company_id) });
   }
   return list.length;
+}
+// Alertes différées : offres publiées avant la validation de l'entreprise ou la confirmation de l'adresse.
+async function announcePending(companyId) {
+  const co = q1(`SELECT name,status FROM companies WHERE id=?`, companyId); if (!co || co.status !== 'valide') return 0;
+  if (!q1(`SELECT id FROM users WHERE company_id=? AND verified=1`, companyId)) return 0;
+  let n = 0; for (const o of qa(`SELECT * FROM offers WHERE company_id=? AND status='ouverte' AND announced=0`, companyId)) if (offerStatus(o) === 'ouverte') n += await announce(o, co.name);
+  return n;
 }
 on('GET', '/api/rh/offers', async (req, res, { user }) => {
   const rows = qa(`SELECT o.*, (SELECT COUNT(*) FROM applications a WHERE a.offer_id=o.id) AS n FROM offers o WHERE o.company_id=? ORDER BY o.created_at DESC`, user.company_id);
@@ -735,6 +766,8 @@ on('POST', '/api/rh/offers', async (req, res, { user, body }) => {
   const b = readOffer(body, user);
   const id = run(`INSERT INTO offers(company_id,test_id,auto_test,title,family,city,contract,description,created_at,closes_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
     user.company_id, b.testId, b.auto, b.title, b.family, b.city, b.contract, b.description, now(), b.closes).lastInsertRowid;
+  run(`UPDATE offers SET announced=0 WHERE id=?`, id);
+  if (!canReach(user)) return send(res, 200, { id, alerted: 0, pending: reachMsg(user) });
   const n = await announce(q1(`SELECT * FROM offers WHERE id=?`, id), user.company);
   send(res, 200, { id, alerted: n });
 }, { auth: true });
@@ -770,6 +803,7 @@ on('GET', '/api/rh/applications/:id/photo', async (req, res, { user, params }) =
 }, { auth: true });
 on('POST', '/api/rh/applications/:id/invite', async (req, res, { user, params, body }) => {
   const a = ownApp(user, params.id); if (!a) return fail(res, 404, 'Candidature introuvable.');
+  if (!canReach(user)) return fail(res, 403, reachMsg(user));
   const o = q1(`SELECT * FROM offers WHERE id=?`, a.offer_id);
   if (body.testId) { if (!q1(`SELECT id FROM tests WHERE id=? AND company_id=?`, +body.testId, user.company_id)) return fail(res, 400, 'Test introuvable.'); o.test_id = +body.testId; }
   if (!o.test_id) return fail(res, 400, 'Associez d’abord un test à cette offre.');
@@ -812,6 +846,49 @@ on('GET', '/api/rh/dashboard', async (req, res, { user }) => {
   send(res, 200, { k, latest, results });
 }, { auth: true });
 
+/* vérification des adresses e-mail */
+function consumeVerify(tok) {
+  const v = q1(`SELECT * FROM verifs WHERE token=? AND expires>?`, sha(String(tok)), now()); if (!v) return null;
+  run(`DELETE FROM verifs WHERE token=?`, v.token);
+  if (v.kind === 'user') { run(`UPDATE users SET verified=1 WHERE id=?`, v.ref_id); const u = q1(`SELECT company_id FROM users WHERE id=?`, v.ref_id); if (u) announcePending(u.company_id); }
+  else run(`UPDATE cusers SET verified=1 WHERE id=?`, v.ref_id);
+  return v.kind;
+}
+on('POST', '/api/verify/resend', async (req, res, { user }) => {
+  if (user.verified) return send(res, 200, { ok: true, already: true });
+  const r = await sendVerify('user', user.id, user.email, user.name); send(res, 200, { ok: true, sent: !!r.sent });
+}, { auth: true });
+
+on('POST', '/api/cand/verify/resend', withCand(async (req, res, { cu }) => {
+  if (cu.verified) return send(res, 200, { ok: true, already: true });
+  const r = await sendVerify('cand', cu.id, cu.email, cu.name); send(res, 200, { ok: true, sent: !!r.sent });
+}));
+
+/* administration de la plateforme (propriétaire) */
+const superOnly = h => async (req, res, ctx) => isSuper(ctx.user) ? h(req, res, ctx) : fail(res, 403, 'Réservé au propriétaire de la plateforme.');
+on('GET', '/api/admin/companies', superOnly(async (req, res) => {
+  const rows = qa(`SELECT c.id, c.name, c.status, c.created_at, (SELECT name FROM users WHERE company_id=c.id ORDER BY id LIMIT 1) AS uname,
+    (SELECT email FROM users WHERE company_id=c.id ORDER BY id LIMIT 1) AS uemail, (SELECT verified FROM users WHERE company_id=c.id ORDER BY id LIMIT 1) AS uverified,
+    (SELECT COUNT(*) FROM offers WHERE company_id=c.id) AS offers, (SELECT COUNT(*) FROM tests WHERE company_id=c.id) AS tests
+    FROM companies c ORDER BY CASE c.status WHEN 'en_attente' THEN 0 WHEN 'suspendue' THEN 1 ELSE 2 END, c.created_at DESC`);
+  const stats = { companies: rows.length, pending: rows.filter(r => r.status === 'en_attente').length,
+    candidates: q1(`SELECT COUNT(*) n FROM cusers`).n, offers: q1(`SELECT COUNT(*) n FROM offers WHERE status='ouverte'`).n, applications: q1(`SELECT COUNT(*) n FROM applications`).n };
+  send(res, 200, { companies: rows.map(r => ({ id: r.id, name: r.name, status: r.status, createdAt: r.created_at, user: r.uname, email: r.uemail, verified: !!r.uverified, offers: r.offers, tests: r.tests })), stats });
+}), { auth: true });
+on('PUT', '/api/admin/companies/:id', superOnly(async (req, res, { params, body }) => {
+  const c = q1(`SELECT * FROM companies WHERE id=?`, +params.id); if (!c) return fail(res, 404, 'Entreprise introuvable.');
+  const st = { valide: 'valide', suspendue: 'suspendue', en_attente: 'en_attente' }[body.status]; if (!st) return fail(res, 400, 'Statut inconnu.');
+  run(`UPDATE companies SET status=? WHERE id=?`, st, c.id);
+  const u = q1(`SELECT * FROM users WHERE company_id=? ORDER BY id LIMIT 1`, c.id);
+  let alerted = 0;
+  if (st === 'valide' && c.status !== 'valide') {
+    if (u) sendMail({ to: u.email, companyId: c.id, subject: 'Votre entreprise est validée sur Genius Recrutement', html: mailLayout('Votre compte est validé',
+      `<p>Bonjour ${esc(u.name)},</p><p>Le compte de <b>${esc(c.name)}</b> est validé. Vos offres sont maintenant visibles par les candidats, et vous pouvez envoyer vos tests par e-mail.</p>${button(`${BASE_URL}/app`, 'Ouvrir Genius Recrutement')}`, c.id) });
+    alerted = await announcePending(c.id);
+  }
+  send(res, 200, { ok: true, alerted });
+}), { auth: true });
+
 const PUB = path.join(ROOT, 'public');
 const SEC_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' };
 const server = http.createServer(async (req, res) => {
@@ -832,6 +909,10 @@ const server = http.createServer(async (req, res) => {
     if (p === '/' || p === '/index.html') return serveFile(res, path.join(PUB, 'index.html'));
     if (p === '/app' || p === '/app/') return serveFile(res, path.join(PUB, 'app.html'));
     if (/^\/t\/[\w-]+$/.test(p)) return serveFile(res, path.join(PUB, 'test.html'), { 'X-Robots-Tag': 'noindex' });
+    if (/^\/verifier\/[\w-]+$/.test(p)) {
+      const kind = consumeVerify(p.split('/').pop());
+      res.writeHead(302, { Location: kind === 'user' ? '/app#/accueil/verifie' : kind === 'cand' ? '/espace#/offres/verifie' : '/?lien=expire' }); return res.end();
+    }
     if (p === '/espace' || p === '/espace/' || p === '/offres') return serveFile(res, path.join(PUB, 'candidat.html'));
     if (p === '/confidentialite') return serveFile(res, path.join(PUB, 'confidentialite.html'));
     if (p === '/mentions-legales') return serveFile(res, path.join(PUB, 'mentions-legales.html'));

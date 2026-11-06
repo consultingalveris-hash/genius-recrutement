@@ -65,9 +65,11 @@ V.offres=function(){
   var steps=ME?[['Photo',!!ME.photo],['CV',!!ME.cv],['Métier',!!ME.family],['Téléphone',!!ME.phone]]:[],done=steps.filter(function(x){return x[1];}).length;
   var hero=ME?'<section class="welcome"><div><h1>Bonjour '+esc(ME.name.split(' ')[0])+'</h1>'+(done<4?'<p>Votre profil est complet à '+Math.round(done*25)+' %. Il manque : '+steps.filter(function(x){return !x[1];}).map(function(x){return x[0].toLowerCase();}).join(', ')+'.</p><div class="meter"><i style="width:'+done*25+'%"></i></div><a class="btn primary" href="#/profil" style="margin-top:14px">Compléter mon profil</a>':'<p>Profil complet : vous pouvez postuler en un clic. '+(ME.alerts?'Les nouvelles offres de votre métier vous seront signalées.':'')+'</p>')+'</div></section>'
     :'<section class="welcome"><div><h1>Trouvez un poste à la hauteur de vos compétences</h1><p>Créez votre profil une fois, postulez en un clic et montrez ce que vous savez faire grâce aux tests.</p><a class="btn primary" href="#/signup" style="margin-top:14px">Créer mon profil gratuit</a></div></section>';
+  if(ME&&!ME.verified)hero='<p class="note info" style="margin:0"><b>Confirmez votre adresse e-mail</b> pour pouvoir postuler : un lien vous a été envoyé à '+esc(ME.email)+' (pensez aux courriers indésirables). <button class="btn sm" id="rv" type="button">Renvoyer l’e-mail</button></p>'+hero;
   app.innerHTML='<div class="wrap col">'+hero+'<div class="row between"><h2>Offres d’emploi</h2><input class="in" id="q" placeholder="Poste, entreprise, ville…" value="'+esc(F.q)+'" style="max-width:320px"></div>'+
-  '<div class="chips" id="chips"><button class="chip'+(F.family?'':' on')+'" data-f="" style=">Tous les métiers</button>'+FAM.map(function(f){var on=F.family===f.k;return '<button class="chip'+(on?' on':'')+'" data-f="'+f.k+'" style=">'+GR.famIcon(f.k,18)+esc(f.name)+'</button>';}).join('')+'</div>'+
+  '<div class="chips" id="chips"><button class="chip'+(F.family?'':' on')+'" data-f="">Tous les métiers</button>'+FAM.map(function(f){var on=F.family===f.k;return '<button class="chip'+(on?' on':'')+'" data-f="'+f.k+'">'+GR.famIcon(f.k,18)+esc(f.name)+'</button>';}).join('')+'</div>'+
   '<div id="list" class="col"><p class="muted">Chargement…</p></div></div>';
+  var rv=$("#rv");if(rv)rv.addEventListener("click",function(){rv.disabled=true;api('POST','/api/cand/verify/resend',{}).then(function(r){toast(r.already?'Adresse déjà confirmée.':r.sent?'E-mail renvoyé.':'L’envoi a échoué. Réessayez plus tard.');}).catch(handle).then(function(){rv.disabled=false;});});
   var t;$('#q').addEventListener('input',function(){F.q=this.value;clearTimeout(t);t=setTimeout(load,250);});
   $('#chips').addEventListener('click',function(e){var b=e.target.closest('.chip');if(!b)return;F.family=b.dataset.f;V.offres();});
   function load(){api('GET','/api/offers?q='+encodeURIComponent(F.q)+'&family='+encodeURIComponent(F.family)).then(function(r){if(rt!==ROUTE)return;
@@ -91,6 +93,7 @@ V.offre=function(id){
   }).catch(function(e){app.innerHTML='<div class="wrap"><div class="card empty">'+esc(e.message)+'<br><br><a class="btn" href="#/offres">Voir les offres</a></div></div>';});
 };
 function applyModal(o){
+  if(!ME.verified){toast('Confirmez d’abord votre adresse e-mail : cliquez sur le lien reçu à l’inscription.');return;}
   var miss=[];if(!ME.cv)miss.push('votre CV');if(!ME.phone)miss.push('votre téléphone');
   modal('<h2>Postuler : '+esc(o.title)+'</h2><p class="muted" style="margin:6px 0 14px">Votre profil'+(ME.cv?' et votre CV':'')+' seront transmis à '+esc(o.company)+'.</p>'+
   (miss.length?'<p class="note warn">Il manque '+miss.join(' et ')+'. Vous pouvez postuler quand même, mais un profil complet a plus de chances. <a href="#/profil" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Compléter mon profil</a></p>':'')+
@@ -156,7 +159,7 @@ V.signup=function(){authPage('Créer mon compte candidat','Gratuit. Postulez en 
   '<label class="field">Métier recherché<select class="in" name="family"><option value="">— Choisir —</option>'+FAM.map(function(f){return '<option value="'+f.k+'">'+esc(f.name)+'</option>';}).join('')+'</select></label>'+
   '<label class="check"><input type="checkbox" name="consent" required><span>J’accepte la <a href="/confidentialite.html" target="_blank" rel="noopener">politique de confidentialité</a>.</span></label>'+
   '<p class="err" hidden></p><button class="btn primary block" type="submit">Créer mon compte</button></form>','Déjà inscrit ? <a href="#/login">Se connecter</a>');
-  bindForm($('#f'),function(d){return api('POST','/api/cand/signup',d).then(function(r){ME=r.me;toast('Compte créé. Ajoutez votre photo et votre CV.');var h='';try{h=sessionStorage.getItem('gr-after')||'';}catch(e){}if(h)after();else location.hash='#/profil';});});};
+  bindForm($('#f'),function(d){return api('POST','/api/cand/signup',d).then(function(r){ME=r.me;toast(r.me.verified?'Compte créé. Ajoutez votre photo et votre CV.':'Compte créé. Confirmez votre adresse avec le lien reçu par e-mail.');var h='';try{h=sessionStorage.getItem('gr-after')||'';}catch(e){}if(h)after();else location.hash='#/profil';});});};
 V.forgot=function(){authPage('Mot de passe oublié','Vous recevrez un lien pour en choisir un nouveau.','<form class="form" id="f"><label class="field">Adresse e-mail<input class="in" name="email" type="email" required></label><p class="err" hidden></p><button class="btn primary block" type="submit">Recevoir le lien</button></form>','<a href="#/login">Retour</a>');
   bindForm($('#f'),function(d,f){return api('POST','/api/cand/forgot',d).then(function(){f.innerHTML='<p class="note ok">Si un compte existe avec cette adresse, un e-mail vient de partir. Regardez aussi dans les courriers indésirables.</p>';});});};
 V.reset=function(tok){authPage('Nouveau mot de passe','','<form class="form" id="f"><label class="field">Nouveau mot de passe<input class="in" name="password" type="password" minlength="8" required autocomplete="new-password"></label><p class="err" hidden></p><button class="btn primary block" type="submit">Enregistrer</button></form>');
@@ -166,6 +169,7 @@ function handle(e){if(e.status===401){ME=null;location.hash='#/login';return;}to
 function route(){ROUTE++;var h=location.hash.replace(/^#\/?/,'')||'offres',p=h.split('/');window.scrollTo(0,0);
   var priv={candidatures:1,profil:1};if(priv[p[0]]&&!ME){location.hash='#/login';return;}
   if(ME&&(p[0]==='login'||p[0]==='signup')){location.hash='#/offres';return;}
+  if(p[0]==='offres'&&p[1]==='verifie'){if(ME)ME.verified=true;history.replaceState(null,'','#/offres');toast('Adresse e-mail confirmée. Vous pouvez postuler.');}
   if(p[0]==='offre')return V.offre(p[1]);if(p[0]==='reset')return V.reset(p[1]||'');(V[p[0]]||V.offres)();}
 window.addEventListener('hashchange',route);
 api('GET','/api/cand/me').then(function(r){ME=r.me;FAM=r.families;CONTRACTS=r.contracts;VAPID=r.vapid;route();}).catch(function(){app.innerHTML='<div class="narrow"><p class="note warn">Le serveur ne répond pas. Réessayez dans un instant.</p></div>';});

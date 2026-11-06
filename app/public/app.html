@@ -14,6 +14,7 @@
   <nav class="nav" id="nav"></nav>
   <div class="who"><span id="who"></span><button class="btn sm" id="logout">Se déconnecter</button></div>
 </div></header>
+<div id="notice"></div>
 <main id="app"></main>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="modal"></div>
@@ -45,10 +46,21 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal()
 
 /* ---------- chrome ---------- */
 function chrome(active){
-  var top=$('#top');top.hidden=!ME;if(!ME)return;
+  var top=$('#top');top.hidden=!ME;if(!ME){$('#notice').innerHTML='';return;}
   $('#who').innerHTML=(ME.logo?'<img src="'+esc(ME.logo)+'" alt="Logo '+esc(ME.company)+'" style="height:36px;max-width:150px;object-fit:contain;display:block">':'')+'<span>'+esc(ME.company)+'</span>';$('#who').style.cssText='display:flex;align-items:center;gap:10px';
   var items=[['#/accueil','Accueil','accueil'],['#/tests','Mes tests','tests'],['#/offres','Offres','offres'],['#/mails','E-mails','mails'],['#/account','Mon compte','account']];
+  if(ME.superadmin)items.push(['#/admin','Administration','admin']);
+  notice();
   $('#nav').innerHTML=items.map(function(i){return '<a href="'+i[0]+'" class="'+(active===i[2]?'on':'')+'">'+i[1]+'</a>';}).join('');
+}
+/* bandeau d'état du compte : adresse à confirmer, entreprise en cours de vérification */
+function notice(){var n=$('#notice'),m='';
+  if(ME.superadmin){n.innerHTML='';return;}
+  if(!ME.verified)m='<b>Confirmez votre adresse e-mail.</b> Un lien vous a été envoyé à '+esc(ME.email)+' (pensez aux courriers indésirables). Tant que l’adresse n’est pas confirmée, vos tests et vos offres restent en préparation : rien n’est envoyé aux candidats. <button class="btn sm" id="rv" type="button">Renvoyer l’e-mail</button>';
+  else if(ME.companyStatus==='en_attente')m='<b>Votre entreprise est en cours de vérification</b> par l’équipe Genius Recrutement, en général sous 24 heures ouvrées. Vous pouvez déjà préparer vos tests et vos offres : elles deviendront visibles et les candidats seront prévenus dès la validation.';
+  else if(ME.companyStatus==='suspendue')m='<b>Le compte de votre entreprise est suspendu.</b> Vos offres ne sont plus visibles. Écrivez à <a href="mailto:consultingalveris@gmail.com">consultingalveris@gmail.com</a>.';
+  n.innerHTML=m?'<div class="wrap" style="padding-bottom:0"><p class="note '+(ME.companyStatus==='suspendue'?'warn':'info')+'" style="margin:0">'+m+'</p></div>':'';
+  var b=$('#rv');if(b)b.addEventListener('click',function(){busy(b,true);api('POST','/api/verify/resend',{}).then(function(r){toast(r.already?'Adresse déjà confirmée.':r.sent?'E-mail renvoyé à '+ME.email+'.':'L’envoi a échoué. Réessayez dans quelques minutes.');}).catch(handle).then(function(){busy(b,false);});});
 }
 $('#logout').addEventListener('click',function(){api('POST','/api/logout').then(function(){ME=null;location.hash='#/login';});});
 
@@ -208,6 +220,7 @@ function inviteModal(t){
     var bad=list.filter(function(x){return !x.email;});if(bad.length)throw new Error('Adresse e-mail manquante sur la ligne : '+bad[0].name);
     return api('POST','/api/tests/'+t.id+'/invite',{candidates:list,send:d.send}).then(function(r){
       var msg='<h2>'+r.added+' candidat'+(r.added>1?'s':'')+' ajouté'+(r.added>1?'s':'')+'</h2><div class="col" style="margin:14px 0">';
+      if(r.blocked)msg+='<p class="note info">Aucun e-mail envoyé : '+esc(r.blocked)+' En attendant, vous pouvez copier le lien de chaque candidat.</p>';
       if(r.sent)msg+='<p class="note ok">'+r.sent+' e-mail'+(r.sent>1?'s':'')+' d’invitation envoyé'+(r.sent>1?'s':'')+'.</p>';
       if(r.test)msg+='<p class="note warn">Les e-mails ne sont pas encore activés sur la plateforme : '+r.test+' invitation'+(r.test>1?'s n’ont':' n’a')+' pas pu partir. Utilisez le bouton « Copier le lien » à côté de chaque candidat et envoyez-le vous-même (WhatsApp, e-mail…).</p>';
       if(r.failed)msg+='<p class="note warn">'+r.failed+' envoi'+(r.failed>1?'s ont':' a')+' échoué. Utilisez « Renvoyer » plus tard.</p>';
@@ -277,12 +290,12 @@ V.account=function(){
   if($('#logodel'))$('#logodel').addEventListener('click',function(){api('DELETE','/api/company/logo').then(function(){ME.logo=null;toast('Logo retiré.');V.account();}).catch(handle);});
   var rt=ROUTE;if(ME.superadmin)api('GET','/api/admin/mail').then(function(m){if(rt!==ROUTE)return;
     var box=$('#mailcfg');
-    box.innerHTML='<form class="form" id="fm"><div><h2>Envoi des e-mails de la plateforme</h2><p class="muted" style="margin-top:4px">Réservé au propriétaire de Genius Recrutement. Ces réglages viennent du service d’envoi (par exemple Brevo, rubrique « SMTP &amp; API »).</p></div>'+
+    box.innerHTML='<form class="form" id="fm"><div><h2>Envoi des e-mails de la plateforme</h2><p class="muted" style="margin-top:4px">Réservé au propriétaire de Genius Recrutement. Les e-mails partent de la boîte ne-pas-repondre@alveris-consulting.com, hébergée chez LWS.</p></div>'+
     (m.hasPass?'<p class="note ok">Un service d’envoi est enregistré.</p>':'<p class="note warn">Aucun service d’envoi : les e-mails ne partent pas encore.</p>')+
     '<div class="two"><label class="field">Serveur SMTP<input class="in" name="host" value="'+esc(m.host)+'" placeholder="smtp-relay.brevo.com"></label><label class="field">Port<input class="in" name="port" type="number" value="'+esc(m.port)+'"></label></div>'+
     '<label class="field">Identifiant SMTP<input class="in" name="user" value="'+esc(m.user)+'" autocomplete="off"></label>'+
-    '<label class="field">Clé SMTP <span class="hint">'+(m.hasPass?'Laissez vide pour garder la clé déjà enregistrée.':'Collez la clé fournie par le service d’envoi.')+'</span><input class="in" name="pass" type="password" autocomplete="new-password"></label>'+
-    '<label class="field">Expéditeur affiché <span class="hint">Une adresse validée chez le service d’envoi, par exemple : Genius Recrutement &lt;contact@alveris-consulting.com&gt;</span><input class="in" name="from" value="'+esc(m.from)+'"></label>'+
+    '<label class="field">Mot de passe de la boîte <span class="hint">'+(m.hasPass?'Laissez vide pour garder la clé déjà enregistrée.':'Mot de passe de la boîte e-mail d’envoi.')+'</span><input class="in" name="pass" type="password" autocomplete="new-password"></label>'+
+    '<label class="field">Expéditeur affiché <span class="hint">Le nom et l’adresse que verront les destinataires, par exemple : Genius Recrutement &lt;contact@alveris-consulting.com&gt;</span><input class="in" name="from" value="'+esc(m.from)+'"></label>'+
     '<p class="err" hidden></p><div><button class="btn primary" type="submit">Enregistrer et tester</button></div><div id="mres"></div></form>';
     bindForm('#fm',function(d){return api('PUT','/api/admin/mail',d).then(function(r){$('#mres').innerHTML='<p class="note '+(r.verified?'ok':'warn')+'">'+esc(r.message)+'</p>';});});
   }).catch(handle);
@@ -316,6 +329,7 @@ V.offreForm=function(id){
     '<label class="check" style="margin-top:10px"><input type="checkbox" name="autoTest"'+(o.autoTest?' checked':'')+'><span><b>Envoyer le test automatiquement</b> aux candidats dont le métier correspond à l’offre.<br><span class="muted">Sinon, vous l’envoyez vous-même depuis la liste des candidatures.</span></span></label></fieldset>'+
     '<p class="err" hidden></p><div class="row"><button class="btn primary" type="submit">'+(id?'Enregistrer':'Publier l’offre')+'</button><a class="btn" href="'+(id?'#/offres/'+id:'#/offres')+'">Annuler</a></div></form></div>';
     bindForm('#fo',function(d){return (id?api('PUT','/api/rh/offers/'+id,d).then(function(){return {id:id};}):api('POST','/api/rh/offers',d)).then(function(r){
+      if(r.pending){toast('Offre enregistrée. Elle sera visible dès que votre compte sera validé.');location.hash='#/offres/'+r.id;return;}
       toast(id?'Offre enregistrée.':'Offre publiée'+(r.alerted?' : '+r.alerted+' candidat'+(r.alerted>1?'s':'')+' alerté'+(r.alerted>1?'s':'')+'.':'.'));location.hash='#/offres/'+r.id;});});
   }).catch(handle);
 };
@@ -367,6 +381,25 @@ V.accueil=function(){
   }).catch(handle);
 };
 
+/* ---------- administration (propriétaire de la plateforme) ---------- */
+V.admin=function(){
+  if(!ME.superadmin)return V.accueil();
+  chrome('admin');var rt=ROUTE;
+  api('GET','/api/admin/companies').then(function(r){if(rt!==ROUTE)return;var s=r.stats;
+    var ST={en_attente:['À vérifier','warn'],valide:['Validée','ok'],suspendue:['Suspendue','neutral']};
+    app.innerHTML='<div class="wrap col"><div><h1>Administration</h1><p class="muted" style="margin-top:4px">Vérifiez chaque nouvelle entreprise avant que ses offres ne deviennent visibles : nom réel, adresse e-mail professionnelle, activité cohérente.</p></div>'+
+    '<div class="kpis"><div class="kpi accent"><span class="small">Entreprises à vérifier</span><b>'+s.pending+'</b></div><div class="kpi"><span class="small muted">Entreprises</span><b>'+s.companies+'</b></div><div class="kpi"><span class="small muted">Candidats inscrits</span><b>'+s.candidates+'</b></div><div class="kpi"><span class="small muted">Offres ouvertes</span><b>'+s.offers+'</b><span class="small muted">'+s.applications+' candidature'+(s.applications>1?'s':'')+'</span></div></div>'+
+    '<div class="card tight"><div class="table-wrap"><table><thead><tr><th>Entreprise</th><th>Responsable</th><th>Inscription</th><th class="num">Tests</th><th class="num">Offres</th><th>État</th><th></th></tr></thead><tbody>'+
+    r.companies.map(function(c){var st=ST[c.status]||[c.status,'neutral'];
+      return '<tr><td><b>'+esc(c.name)+'</b></td><td>'+esc(c.user||'–')+'<div class="small muted">'+esc(c.email||'')+(c.email&&!c.verified?' · adresse non confirmée':'')+'</div></td><td>'+fmtDate(c.createdAt)+'</td><td class="num">'+c.tests+'</td><td class="num">'+c.offers+'</td><td><span class="pill '+st[1]+'">'+st[0]+'</span></td><td style="text-align:right;white-space:nowrap">'+
+        (c.status!=='valide'?'<button class="btn sm primary" data-st="valide" data-id="'+c.id+'">Valider</button> ':'')+(c.status!=='suspendue'&&c.email!==ME.email?'<button class="btn sm" data-st="suspendue" data-id="'+c.id+'">Suspendre</button>':'')+'</td></tr>';}).join('')+
+    '</tbody></table></div></div></div>';
+    app.querySelectorAll('[data-st]').forEach(function(b){b.addEventListener('click',function(){
+      busy(b,true);
+      api('PUT','/api/admin/companies/'+b.dataset.id,{status:b.dataset.st}).then(function(x){toast(b.dataset.st==='valide'?'Entreprise validée'+(x.alerted?' : '+x.alerted+' candidat'+(x.alerted>1?'s':'')+' alerté'+(x.alerted>1?'s':''):'')+'.':'Entreprise suspendue : ses offres ne sont plus visibles.');route();}).catch(handle).then(function(){busy(b,false);});});});
+  }).catch(handle);
+};
+
 /* ---------- routeur ---------- */
 function handle(e){if(e.status===401){ME=null;location.hash='#/login';return;}if(e.status===404){app.innerHTML='<div class="wrap"><div class="card empty"><h2 style="color:var(--fg)">Page introuvable</h2><p style="margin:8px 0 16px">'+esc(e.message)+'</p><a class="btn" href="#/tests">Retour à mes tests</a></div></div>';return;}toast(e.message);}
 var ROUTE=0;
@@ -377,6 +410,7 @@ function route(){ROUTE++;
   if(ME&&(p[0]==='login'||p[0]==='signup')){location.hash='#/accueil';return;}
   window.scrollTo(0,0);
   if(p[0]==='reset')return V.reset(p[1]||'');
+  if(p[0]==='accueil'&&p[1]==='verifie'){ME.verified=true;history.replaceState(null,'','#/accueil');toast('Adresse e-mail confirmée. Merci !');}
   if(p[0]==='offres'&&p[1]==='new')return V.offreForm(null);
   if(p[0]==='offres'&&p[1]&&p[2]==='edit')return V.offreForm(p[1]);
   if(p[0]==='offres'&&p[1])return V.offre(p[1]);

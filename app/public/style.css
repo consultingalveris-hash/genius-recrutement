@@ -135,3 +135,4 @@ h2{letter-spacing:-.015em}
 .feed a:last-child{border-bottom:0}
 .feed a:hover{background:var(--surface-2)}
 .empty-ic{width:52px;height:52px;border-radius:12px;background:var(--accent-soft);color:var(--accent-soft-fg);display:grid;place-items:center;margin:0 auto 12px}
+@media (max-width:640px){.chips{flex-wrap:nowrap;overflow-x:auto;margin:0 -16px;padding:0 16px 4px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}.chip{flex:none}}
