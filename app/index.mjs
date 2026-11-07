@@ -20,7 +20,11 @@ const BANK = new Map(QDATA.bank.map(q => [q.id, q]));
 const COMPS = QDATA.comps;
 const FAMILIES = QDATA.families;
 const famOk = f => FAMILIES.some(x => x.k === f);
-const poolOf = (fam, c) => QDATA.bank.filter(q => q.c === c && (q.c === 'F' || q.c === 'L' ? q.fam === 'commun' : q.fam === fam));
+const poolOf = (fam, c) => QDATA.bank.filter(q => !q.retired && q.c === c && (q.c === 'F' || q.c === 'L' ? q.fam === 'commun' : q.fam === fam));
+// Niveau du poste : part des questions simples, moyennes et difficiles tirées.
+const LEVELS = { debutant: { name: 'Débutant', mix: { Simple: .5, Moyenne: .35, Difficile: .15 } }, confirme: { name: 'Confirmé', mix: { Simple: .25, Moyenne: .45, Difficile: .3 } }, expert: { name: 'Expert', mix: { Simple: .1, Moyenne: .4, Difficile: .5 } } };
+// Temps par question : les calculs ont au moins 60 secondes.
+const qSecs = (t, id) => { const q = BANK.get(id); return q && q.c === 'L' ? Math.max(t.per_q, 60) : t.per_q; };
 const DEFAULT_WEIGHTS = { M: 30, S: 35, F: 20, L: 15 };
 
 fs.mkdirSync(path.join(DATA_DIR, 'backups'), { recursive: true });
@@ -45,7 +49,7 @@ CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 `);
 try { db.exec(`ALTER TABLE companies ADD COLUMN logo TEXT`); } catch {}
 try { db.exec(`ALTER TABLE companies ADD COLUMN logo_v INTEGER`); } catch {}
-for (const sql of [`ALTER TABLE tests ADD COLUMN family TEXT NOT NULL DEFAULT 'cc'`, `ALTER TABLE candidates ADD COLUMN perms TEXT`,
+for (const sql of [`ALTER TABLE tests ADD COLUMN level TEXT NOT NULL DEFAULT 'confirme'`, `ALTER TABLE tests ADD COLUMN family TEXT NOT NULL DEFAULT 'cc'`, `ALTER TABLE candidates ADD COLUMN perms TEXT`,
   `ALTER TABLE candidates ADD COLUMN qtime TEXT`, `ALTER TABLE candidates ADD COLUMN cur TEXT`, `ALTER TABLE candidates ADD COLUMN cur_since INTEGER`]) { try { db.exec(sql); } catch {} }
 for (const sql of [`ALTER TABLE companies ADD COLUMN status TEXT NOT NULL DEFAULT 'valide'`, `ALTER TABLE users ADD COLUMN verified INTEGER NOT NULL DEFAULT 1`]) { try { db.exec(sql); } catch {} }
 db.exec(`CREATE TABLE IF NOT EXISTS verifs(token TEXT PRIMARY KEY, kind TEXT NOT NULL, ref_id INTEGER NOT NULL, expires INTEGER NOT NULL)`);
@@ -101,7 +105,7 @@ async function sendMail({ to, subject, html, companyId = null, replyTo, attachme
 
 /* ---------- tests et scores ---------- */
 function testRow(t) {
-  return { id: t.id, family: t.family || 'cc', familyName: (FAMILIES.find(f => f.k === t.family) || FAMILIES[0]).name, title: t.title, replyEmail: t.reply_email, perQ: t.per_q, count: t.count, weights: JSON.parse(t.weights),
+  return { level: t.level || 'confirme', minutes: Math.ceil(estimateSecs(t) / 60), id: t.id, family: t.family || 'cc', familyName: (FAMILIES.find(f => f.k === t.family) || FAMILIES[0]).name, title: t.title, replyEmail: t.reply_email, perQ: t.per_q, count: t.count, weights: JSON.parse(t.weights),
     back: !!t.back, deadline: t.deadline || '', createdAt: t.created_at, archived: !!t.archived };
 }
 function expired(t) { if (!t.deadline) return false; const e = new Date(t.deadline + 'T23:59:59'); return !isNaN(e) && now() > e.getTime(); }
@@ -119,8 +123,19 @@ function pickQuestions(t) {
       || COMPS.find(c => want[c.k] < pools[c.k].length);
     if (!c) break; want[c.k]++; n++;
   }
-  const ids = []; for (const c of COMPS) ids.push(...pools[c.k].slice(0, want[c.k]).map(q => q.id));
-  return ids.sort(() => Math.random() - .5);
+  const mix = (LEVELS[t.level] || LEVELS.confirme).mix, ids = [];
+  for (const c of COMPS) {
+    const n = want[c.k]; if (!n) continue;
+    const by = { Simple: [], Moyenne: [], Difficile: [] }; for (const q of pools[c.k]) (by[q.lvl] || by.Moyenne).push(q);
+    const take = {}; let got = 0;
+    for (const l of Object.keys(by)) { take[l] = Math.min(by[l].length, Math.round(n * mix[l])); got += take[l]; }
+    // ajuste pour obtenir exactement n questions, en privilégiant le niveau le plus représenté dans le mélange
+    const order = Object.keys(mix).sort((a, b) => mix[b] - mix[a]);
+    while (got > n) { const l = [...order].reverse().find(l => take[l] > 0); take[l]--; got--; }
+    while (got < n) { const l = order.find(l => take[l] < by[l].length); if (!l) break; take[l]++; got++; }
+    for (const l of Object.keys(by)) ids.push(...by[l].slice(0, take[l]).map(q => q.id));
+  }
+  return shuffle(ids);
 }
 function score(t, order, answers) {
   const acc = {}, detail = []; let answered = 0;
@@ -136,11 +151,16 @@ function score(t, order, answers) {
   for (const c of COMPS) { const v = comp[c.k], ww = +w[c.k] || 0; if (v != null) { ws += ww; sum += ww * v; } }
   return { comp, global: ws ? Math.round(sum / ws) : 0, detail, answered, total: order.length };
 }
-const limitSecs = t => t.count * t.per_q + 15;
+// Durée prévue avant tirage (selon les poids), puis durée exacte une fois les questions tirées.
+function estimateSecs(t) {
+  const w = JSON.parse(t.weights), tot = COMPS.reduce((s, c) => s + (+w[c.k] || 0), 0) || 1;
+  const nL = Math.round(t.count * (+w.L || 0) / tot); return (t.count - nL) * t.per_q + nL * Math.max(t.per_q, 60);
+}
+const limitSecs = (t, c) => (c && c.qorder ? JSON.parse(c.qorder).reduce((s, id) => s + qSecs(t, id), 0) : estimateSecs(t)) + 15;
 function finishCandidate(c, t, timeout) {
   const order = JSON.parse(c.qorder || '[]'), answers = JSON.parse(c.answers || '{}');
   const s = score(t, order, answers), end = now();
-  const secs = Math.min(limitSecs(t), Math.round((end - c.started_at) / 1000));
+  const secs = Math.min(limitSecs(t, c), Math.round((end - c.started_at) / 1000));
   run(`UPDATE candidates SET status='termine', ended_at=?, timeout=?, global=?, scores=?, secs=? WHERE id=?`,
     end, timeout ? 1 : 0, s.global, JSON.stringify(s.comp), secs, c.id);
   const co = q1(`SELECT name FROM companies WHERE id=?`, t.company_id);
@@ -149,10 +169,9 @@ function finishCandidate(c, t, timeout) {
 ${button(`${BASE_URL}/app#/tests/${t.id}`, 'Voir le classement')}<p style="font-size:13px;color:#4A5565">${esc(co?.name || '')}</p>`) });
 }
 function sweep() {
-  for (const c of qa(`SELECT c.*, t.per_q, t.count FROM candidates c JOIN tests t ON t.id=c.test_id WHERE c.status='en_cours'`)) {
-    if ((now() - c.started_at) / 1000 > c.count * c.per_q + 15) {
-      const t = q1(`SELECT * FROM tests WHERE id=?`, c.test_id); finishCandidate(c, t, true);
-    }
+  for (const c of qa(`SELECT * FROM candidates WHERE status='en_cours'`)) {
+    const t = q1(`SELECT * FROM tests WHERE id=?`, c.test_id);
+    if (t && (now() - c.started_at) / 1000 > limitSecs(t, c)) finishCandidate(c, t, true);
   }
   run(`DELETE FROM sessions WHERE expires<?`, now()); run(`DELETE FROM resets WHERE expires<?`, now());
 }
@@ -245,10 +264,10 @@ function candidateOut(c) {
     link: `${BASE_URL}/t/${c.token}`, photo: c.cu_id ? `/api/candidates/${c.id}/photo` : null };
 }
 function invitationMail(t, c, companyName) {
-  const mins = Math.ceil(t.count * t.per_q / 60);
+  const mins = Math.ceil(estimateSecs(t) / 60);
   return mailLayout(`${companyName} vous invite à passer un test`, `<p>Bonjour ${esc(c.name)},</p>
 <p>Dans le cadre de votre candidature au poste <b>${esc(t.title)}</b>, ${esc(companyName)} vous propose un test en ligne.</p>
-<p>${t.count} questions, ${t.per_q} secondes par question, soit environ ${mins} minutes. Prévoyez un moment au calme : une fois commencé, le test se fait d'une traite.${t.deadline ? `<br>À passer avant le <b>${new Date(t.deadline + 'T12:00:00').toLocaleDateString('fr-FR')}</b>.` : ''}</p>
+<p>${t.count} questions, ${t.per_q} secondes par question (60 secondes pour les calculs), soit environ ${mins} minutes. Prévoyez un moment au calme : une fois commencé, le test se fait d'une traite.${t.deadline ? `<br>À passer avant le <b>${new Date(t.deadline + 'T12:00:00').toLocaleDateString('fr-FR')}</b>.` : ''}</p>
 ${button(`${BASE_URL}/t/${c.token}`, 'Commencer le test')}`, t.company_id);
 }
 
@@ -340,11 +359,12 @@ function readTestBody(body, user) {
   if (!title) throw Object.assign(new Error('Indiquez l’intitulé du poste.'), { code: 400 });
   if (!isEmail(reply)) throw Object.assign(new Error('Adresse de réception des résultats invalide.'), { code: 400 });
   if (!Object.values(weights).some(v => v > 0)) throw Object.assign(new Error('Au moins une compétence doit compter.'), { code: 400 });
-  return { family, title, reply, perQ, count, weights: JSON.stringify(weights), back: body.back === false ? 0 : 1, deadline };
+  const level = LEVELS[body.level] ? body.level : 'confirme';
+  return { family, title, reply, perQ, count, weights: JSON.stringify(weights), back: body.back === false ? 0 : 1, deadline, level };
 }
 const ownTest = (user, id) => q1(`SELECT * FROM tests WHERE id=? AND company_id=?`, +id, user.company_id);
 on('GET', '/api/meta', async (req, res) => send(res, 200, { comps: COMPS.map(c => ({ k: c.k, name: c.name, short: c.short, desc: c.desc, ask: c.ask })), bankSize: QDATA.bank.length,
-  families: FAMILIES.map(f => ({ ...f, counts: Object.fromEntries(COMPS.map(c => [c.k, poolOf(f.k, c.k).length])) })), defaults: { perQ: 20, count: 30, weights: DEFAULT_WEIGHTS } }));
+  families: FAMILIES.map(f => ({ ...f, counts: Object.fromEntries(COMPS.map(c => [c.k, poolOf(f.k, c.k).length])) })), defaults: { perQ: 20, count: 30, weights: DEFAULT_WEIGHTS, level: 'confirme' }, levels: Object.entries(LEVELS).map(([k, v]) => ({ k, name: v.name })) }));
 on('GET', '/api/tests', async (req, res, { user }) => {
   const rows = qa(`SELECT t.*, (SELECT COUNT(*) FROM candidates c WHERE c.test_id=t.id) AS n,
     (SELECT COUNT(*) FROM candidates c WHERE c.test_id=t.id AND c.status='termine') AS done FROM tests t WHERE company_id=? ORDER BY archived, created_at DESC`, user.company_id);
@@ -352,8 +372,8 @@ on('GET', '/api/tests', async (req, res, { user }) => {
 }, { auth: true });
 on('POST', '/api/tests', async (req, res, { user, body }) => {
   const b = readTestBody(body, user);
-  const id = run(`INSERT INTO tests(company_id,family,title,reply_email,per_q,count,weights,back,deadline,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-    user.company_id, b.family, b.title, b.reply, b.perQ, b.count, b.weights, b.back, b.deadline, now()).lastInsertRowid;
+  const id = run(`INSERT INTO tests(company_id,family,title,reply_email,per_q,count,weights,back,deadline,created_at,level) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+    user.company_id, b.family, b.title, b.reply, b.perQ, b.count, b.weights, b.back, b.deadline, now(), b.level).lastInsertRowid;
   send(res, 200, { id });
 }, { auth: true });
 on('GET', '/api/tests/:id', async (req, res, { user, params }) => {
@@ -366,9 +386,9 @@ on('PUT', '/api/tests/:id', async (req, res, { user, params, body }) => {
   if (body.archived != null && Object.keys(body).length === 1) { run(`UPDATE tests SET archived=? WHERE id=?`, body.archived ? 1 : 0, t.id); return send(res, 200, { ok: true }); }
   const started = q1(`SELECT COUNT(*) AS n FROM candidates WHERE test_id=? AND status!='invite'`, t.id).n;
   const b = readTestBody(body, user);
-  if (started && (b.count !== t.count || b.perQ !== t.per_q || b.weights !== t.weights || b.family !== (t.family || 'cc')))
+  if (started && (b.count !== t.count || b.perQ !== t.per_q || b.weights !== t.weights || b.family !== (t.family || 'cc') || b.level !== (t.level || 'confirme')))
     return fail(res, 409, 'Des candidats ont déjà commencé ce test : le métier, le nombre de questions, le temps et les poids ne peuvent plus changer. Créez un nouveau test si besoin.');
-  run(`UPDATE tests SET family=?,title=?,reply_email=?,per_q=?,count=?,weights=?,back=?,deadline=? WHERE id=?`, b.family, b.title, b.reply, b.perQ, b.count, b.weights, b.back, b.deadline, t.id);
+  run(`UPDATE tests SET family=?,title=?,reply_email=?,per_q=?,count=?,weights=?,back=?,deadline=?,level=? WHERE id=?`, b.family, b.title, b.reply, b.perQ, b.count, b.weights, b.back, b.deadline, b.level, t.id);
   send(res, 200, { ok: true });
 }, { auth: true });
 on('DELETE', '/api/tests/:id', async (req, res, { user, params }) => {
@@ -472,18 +492,18 @@ function spentOf(c) {
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 function publicState(c, t) {
   const co = q1(`SELECT name FROM companies WHERE id=?`, t.company_id);
-  const base = { company: co?.name || '', logo: logoUrl(t.company_id), title: t.title, name: c.name, count: t.count, perQ: t.per_q, back: !!t.back, status: c.status,
+  const base = { company: co?.name || '', logo: logoUrl(t.company_id), title: t.title, name: c.name, count: t.count, perQ: t.per_q, minutes: Math.ceil(estimateSecs(t) / 60), back: !!t.back, status: c.status,
     expired: c.status === 'invite' && expired(t), deadline: t.deadline || '' };
   if (c.status !== 'en_cours') return base;
   const order = JSON.parse(c.qorder), answers = JSON.parse(c.answers || '{}'), perms = permsOf(c), spent = spentOf(c);
   const shown = {}; for (const [id, a] of Object.entries(answers)) shown[id] = perms[id] ? perms[id].indexOf(a) : a;
-  return { ...base, elapsed: Math.round((now() - c.started_at) / 1000), limit: limitSecs(t), answers: shown, spent, current: c.cur || null,
-    questions: order.map(id => { const q = BANK.get(id), p = perms[id] || q.o.map((_, i) => i); return { id, skill: q.skill, text: q.t, options: p.map(i => q.o[i][0]) }; }) };
+  return { ...base, elapsed: Math.round((now() - c.started_at) / 1000), limit: limitSecs(t, c), answers: shown, spent, current: c.cur || null,
+    questions: order.map(id => { const q = BANK.get(id), p = perms[id] || q.o.map((_, i) => i); return { id, skill: q.skill, text: q.t, time: qSecs(t, id), options: p.map(i => q.o[i][0]) }; }) };
 }
 function candContext(params) {
   const c = candByToken(params.token); if (!c) return null;
   const t = q1(`SELECT * FROM tests WHERE id=?`, c.test_id);
-  if (c.status === 'en_cours' && (now() - c.started_at) / 1000 > limitSecs(t)) { finishCandidate(c, t, true); return candContext(params); }
+  if (c.status === 'en_cours' && (now() - c.started_at) / 1000 > limitSecs(t, c)) { finishCandidate(c, t, true); return candContext(params); }
   return { c, t };
 }
 on('GET', '/api/c/:token', async (req, res, { params }) => {
@@ -510,7 +530,7 @@ on('POST', '/api/c/:token/answer', async (req, res, { params, body }) => {
   const q = BANK.get(body.id), k = body.answer == null ? null : Math.round(+body.answer);
   if (k != null && !(k >= 0 && k < q.o.length)) return fail(res, 400, 'Réponse invalide.');
   const perm = permsOf(c)[body.id], a = k == null ? null : (perm ? perm[k] : k);
-  if ((spentOf(c)[body.id] || 0) > t.per_q + 3) return fail(res, 409, 'Le temps de cette question est écoulé.');
+  if ((spentOf(c)[body.id] || 0) > qSecs(t, body.id) + 3) return fail(res, 409, 'Le temps de cette question est écoulé.');
   if (a == null) delete answers[body.id]; else answers[body.id] = a;
   run(`UPDATE candidates SET answers=? WHERE id=?`, JSON.stringify(answers), c.id); send(res, 200, { ok: true });
 });
@@ -529,7 +549,7 @@ on('POST', '/api/c/:token/exit', async (req, res, { params }) => {
 });
 on('POST', '/api/c/:token/finish', async (req, res, { params }) => {
   const x = candContext(params); if (!x) return fail(res, 404, 'Ce lien de test n’existe pas.');
-  if (x.c.status === 'en_cours') finishCandidate(x.c, x.t, (now() - x.c.started_at) / 1000 >= x.t.count * x.t.per_q);
+  if (x.c.status === 'en_cours') finishCandidate(x.c, x.t, (now() - x.c.started_at) / 1000 >= limitSecs(x.t, x.c) - 15);
   send(res, 200, { ok: true });
 });
 
