@@ -208,7 +208,51 @@ async function offsiteBackup() {
     html: mailLayout('Sauvegarde hebdomadaire', `<p>Vous trouverez en pièce jointe la copie de sauvegarde de Genius Recrutement (${Math.ceil(gz.length / 1024)} Ko).</p><p>Gardez ce message : en cas de panne du serveur, cette copie permet de tout restaurer. Elle contient les données des recruteurs et des candidats : ne la transférez à personne.</p>`) });
   if (r.sent) run(`INSERT INTO settings(k,v) VALUES('offsite',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`, String(now()));
 }
+// Fichiers déposés (CV, documents des salariés) : chaque semaine, les fichiers nouveaux ou modifiés partent aussi
+// par e-mail, en archives .tar.gz de 12 Mo au plus. Restauration : décompresser l'archive dans /data.
+function tarOf(files) {
+  const blocks = [];
+  for (const { name, buf, mtime } of files) {
+    const h = Buffer.alloc(512);
+    const w = (str, off, len) => h.write(str, off, len, 'ascii');
+    w(name, 0, 100); w('0000644\0', 100, 8); w('0000000\0', 108, 8); w('0000000\0', 116, 8);
+    w(buf.length.toString(8).padStart(11, '0') + '\0', 124, 12); w(Math.floor(mtime / 1000).toString(8).padStart(11, '0') + '\0', 136, 12);
+    w('        ', 148, 8); w('0', 156, 1); w('ustar\0', 257, 6); w('00', 263, 2);
+    let sum = 0; for (const b of h) sum += b; w(sum.toString(8).padStart(6, '0') + '\0 ', 148, 8);
+    blocks.push(h, buf, Buffer.alloc((512 - (buf.length % 512)) % 512));
+  }
+  blocks.push(Buffer.alloc(1024));
+  return zlib.gzipSync(Buffer.concat(blocks));
+}
+async function offsiteFiles() {
+  if (!SUPERADMIN || !getTransport()) return;
+  const last = +(q1(`SELECT v FROM settings WHERE k='offsite_files'`)?.v || 0);
+  if (now() - last < 7 * 864e5) return;
+  const since = +(q1(`SELECT v FROM settings WHERE k='offsite_files_since'`)?.v || 0), start = now();
+  const files = [];
+  for (const sub of ['cv', 'docs']) {
+    const dir = path.join(DATA_DIR, sub);
+    for (const f of fs.readdirSync(dir)) {
+      const st = fs.statSync(path.join(dir, f));
+      if (st.isFile() && st.mtimeMs >= since) files.push({ name: `${sub}/${f}`, path: path.join(dir, f), size: st.size, mtime: st.mtimeMs });
+    }
+  }
+  const day = new Date().toISOString().slice(0, 10), parts = [];
+  let cur = [], size = 0;
+  for (const f of files) { if (cur.length && size + f.size > 12 * 1024 * 1024) { parts.push(cur); cur = []; size = 0; } cur.push(f); size += f.size; }
+  if (cur.length) parts.push(cur);
+  for (let i = 0; i < parts.length; i++) {
+    const gz = tarOf(parts[i].map(f => ({ name: f.name, buf: fs.readFileSync(f.path), mtime: f.mtime })));
+    const n = parts.length > 1 ? ` (${i + 1}/${parts.length})` : '';
+    const r = await sendMail({ to: SUPERADMIN, subject: `Sauvegarde des fichiers Genius Recrutement du ${day}${n}`, attachments: [{ filename: `genius-fichiers-${day}${parts.length > 1 ? '-' + (i + 1) : ''}.tar.gz`, content: gz }],
+      html: mailLayout('Sauvegarde des fichiers', `<p>Vous trouverez en pièce jointe les fichiers déposés sur Genius Recrutement depuis la sauvegarde précédente${n} : ${parts[i].length} fichier(s), CV des candidats et documents des salariés.</p><p>Gardez ce message avec les sauvegardes de la base : ensemble, elles permettent de tout restaurer. Ces fichiers sont confidentiels : ne les transférez à personne.</p>`) });
+    if (!r.sent) return;
+  }
+  run(`INSERT INTO settings(k,v) VALUES('offsite_files',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`, String(now()));
+  run(`INSERT INTO settings(k,v) VALUES('offsite_files_since',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`, String(start));
+}
 setTimeout(offsiteBackup, 60_000); setInterval(offsiteBackup, 6 * 3600_000);
+setTimeout(offsiteFiles, 120_000); setInterval(offsiteFiles, 6 * 3600_000);
 
 /* ---------- HTTP ---------- */
 const MIME = { '.webmanifest': 'application/manifest+json', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.pdf': 'application/pdf', '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
