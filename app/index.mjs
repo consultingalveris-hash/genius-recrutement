@@ -575,6 +575,18 @@ try { db.exec(`ALTER TABLE candidates ADD COLUMN cu_id INTEGER`); } catch {}
 try { db.exec(`ALTER TABLE cusers ADD COLUMN verified INTEGER NOT NULL DEFAULT 1`); } catch {}
 try { db.exec(`ALTER TABLE applications ADD COLUMN stage TEXT NOT NULL DEFAULT 'nouvelle'`); db.exec(`UPDATE applications SET stage='preselection' WHERE status='retenue'`); db.exec(`UPDATE applications SET stage='refusee' WHERE status='refusee'`); } catch {}
 try { db.exec(`ALTER TABLE offers ADD COLUMN announced INTEGER NOT NULL DEFAULT 1`); } catch {}
+try { db.exec(`ALTER TABLE offers ADD COLUMN views INTEGER NOT NULL DEFAULT 0`); } catch {}
+// Une vue comptée par visiteur et par offre toutes les 12 heures (empreinte anonyme, jamais stockée en clair).
+const seenViews = new Map();
+function countView(req, offerId) {
+  const ua = String(req.headers['user-agent'] || '');
+  if (/bot|crawl|spider|facebookexternalhit|whatsapp|linkedinbot|slurp|preview/i.test(ua)) return;
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  const k = sha(ip + '|' + ua + '|' + offerId), t = seenViews.get(k);
+  if (t && now() - t < 12 * 3600_000) return;
+  seenViews.set(k, now()); if (seenViews.size > 50000) seenViews.clear();
+  run(`UPDATE offers SET views=views+1 WHERE id=?`, offerId);
+}
 const CV_DIR = path.join(DATA_DIR, 'cv'); fs.mkdirSync(CV_DIR, { recursive: true });
 const CONTRACTS = ['CDI', 'CDD', 'Stage', 'Alternance', 'Consultance', 'Intérim', 'Freelance', 'Temps partiel'];
 const famName = k => (FAMILIES.find(f => f.k === k) || {}).name || '';
@@ -732,6 +744,7 @@ on('GET', '/api/offers', async (req, res, { query }) => {
 on('GET', '/api/offers/:id', async (req, res, { params }) => {
   const o = q1(`SELECT o.*, c.name AS company, c.logo_v FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=? AND c.status='valide'`, +params.id);
   if (!o) return fail(res, 404, 'Offre introuvable.');
+  countView(req, o.id);
   const cu = currentCand(req);
   send(res, 200, { offer: offerOut(o, { applied: !!(cu && q1(`SELECT id FROM applications WHERE offer_id=? AND cu_id=?`, o.id, cu.id)) }) });
 });
@@ -797,7 +810,7 @@ on('GET', '/api/cand/applications', withCand(async (req, res, { cu }) => {
     k.status AS tstatus, k.token FROM applications a JOIN offers o ON o.id=a.offer_id JOIN companies c ON c.id=o.company_id
     LEFT JOIN candidates k ON k.id=a.candidate_id WHERE a.cu_id=? ORDER BY a.created_at DESC`, cu.id);
   send(res, 200, { applications: rows.map(r => ({ id: r.id, offerId: r.offer_id, title: r.title, company: r.company, city: r.city || '', contract: r.contract || '',
-    companyLogo: r.logo_v ? `/api/logo/${r.company_id}?v=${r.logo_v}` : null, status: r.status, stage: r.stage || 'nouvelle', createdAt: r.created_at,
+    companyLogo: r.logo_v ? `/api/logo/${r.company_id}?v=${r.logo_v}` : null, status: r.status, stage: r.stage || 'nouvelle', createdAt: r.created_at, interview: (iv => iv && iv.at > now() - 3600_000 ? { at: iv.at, label: fmtDakar(iv.at), place: iv.place || '', note: iv.note || '' } : null)(q1(`SELECT * FROM interviews WHERE app_id=? ORDER BY id DESC LIMIT 1`, r.id)),
     test: r.token ? { status: r.tstatus, link: `/t/${r.token}` } : null })) });
 }));
 
@@ -833,7 +846,7 @@ async function announcePending(companyId) {
 }
 on('GET', '/api/rh/offers', async (req, res, { user }) => {
   const rows = qa(`SELECT o.*, (SELECT COUNT(*) FROM applications a WHERE a.offer_id=o.id AND a.status!='attente') AS n FROM offers o WHERE o.company_id=? ORDER BY o.created_at DESC`, user.company_id);
-  send(res, 200, { offers: rows.map(o => ({ ...offerOut(o), testId: o.test_id, autoTest: !!o.auto_test, applications: o.n })), contracts: CONTRACTS });
+  send(res, 200, { offers: rows.map(o => ({ ...offerOut(o), testId: o.test_id, autoTest: !!o.auto_test, applications: o.n, views: o.views || 0 })), contracts: CONTRACTS });
 }, { auth: true });
 on('POST', '/api/rh/offers', async (req, res, { user, body }) => {
   const b = readOffer(body, user);
@@ -859,7 +872,12 @@ on('GET', '/api/rh/offers/:id', async (req, res, { user, params }) => {
   const apps = qa(`SELECT a.*, u.name, u.email, u.phone, u.city, u.family, u.headline, u.cv_name, u.photo IS NOT NULL AS hasphoto, u.cv_at,
     k.status AS tstatus, k.global, k.scores, k.secs, k.token FROM applications a JOIN cusers u ON u.id=a.cu_id LEFT JOIN candidates k ON k.id=a.candidate_id
     WHERE a.offer_id=? AND a.status!='attente' ORDER BY (k.global IS NULL), k.global DESC, a.created_at DESC`, o.id);
-  send(res, 200, { offer: { ...offerOut(o), testId: o.test_id, autoTest: !!o.auto_test }, applications: apps.map(a => ({ id: a.id, name: a.name, email: a.email, phone: a.phone || '',
+  const st = { views: o.views || 0, applications: apps.length, tests: apps.filter(a => a.tstatus === 'termine').length,
+    avg: (() => { const d = apps.filter(a => a.tstatus === 'termine' && a.global != null); return d.length ? Math.round(d.reduce((x, a) => x + a.global, 0) / d.length) : null; })(),
+    entretien: apps.filter(a => ['entretien', 'embauche'].includes(a.stage)).length, embauche: apps.filter(a => a.stage === 'embauche').length,
+    pending: q1(`SELECT COUNT(*) n FROM applications WHERE offer_id=? AND status='attente'`, o.id).n };
+  const ivs = qa(`SELECT * FROM interviews WHERE app_id IN (SELECT id FROM applications WHERE offer_id=?) ORDER BY at`, o.id);
+  send(res, 200, { stats: st, offer: { ...offerOut(o), testId: o.test_id, autoTest: !!o.auto_test }, applications: apps.map(a => ({ interview: (iv => iv ? { id: iv.id, at: iv.at, place: iv.place, note: iv.note } : null)(ivs.filter(i => i.app_id === a.id).pop()), id: a.id, name: a.name, email: a.email, phone: a.phone || '',
     city: a.city || '', familyName: famName(a.family), headline: a.headline || '', message: a.message || '', status: a.status, stage: a.stage || 'nouvelle', createdAt: a.created_at,
     photo: a.hasphoto ? `/api/rh/applications/${a.id}/photo` : null, cv: a.cv_name ? `/api/rh/applications/${a.id}/cv` : null,
     test: a.token ? { status: a.tstatus, global: a.global, scores: a.scores ? JSON.parse(a.scores) : null, secs: a.secs } : null })) });
@@ -921,7 +939,178 @@ on('GET', '/api/rh/dashboard', async (req, res, { user }) => {
     WHERE o.company_id=? AND a.status!='attente' ORDER BY a.created_at DESC LIMIT 6`, cid).map(a => ({ id: a.id, offerId: a.offer_id, title: a.title, name: a.name, status: a.status, stage: a.stage || 'nouvelle', createdAt: a.created_at,
       photo: a.hasphoto ? `/api/rh/applications/${a.id}/photo` : null, score: a.tstatus === 'termine' ? a.global : null }));
   const results = qa(`SELECT c.id, c.name, c.global, c.ended_at, c.test_id, t.title FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.status='termine' ORDER BY c.ended_at DESC LIMIT 5`, cid);
-  send(res, 200, { k, latest, results });
+  const interviews = qa(`SELECT i.id, i.at, i.place, u.name, o.title, o.id AS offer_id FROM interviews i JOIN applications a ON a.id=i.app_id JOIN cusers u ON u.id=a.cu_id JOIN offers o ON o.id=a.offer_id
+    WHERE i.company_id=? AND i.at > ? ORDER BY i.at LIMIT 5`, cid, now() - 3600_000).map(r => ({ id: r.id, at: r.at, place: r.place, name: r.name, title: r.title, offerId: r.offer_id }));
+  const today = new Date().toISOString().slice(0, 10), soon = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+  const staff = { active: q1(`SELECT COUNT(*) n FROM employees WHERE company_id=? AND active=1`, cid).n,
+    ending: qa(`SELECT id,name,end_date FROM employees WHERE company_id=? AND active=1 AND end_date BETWEEN ? AND ? ORDER BY end_date`, cid, today, soon).map(e => ({ id: e.id, name: e.name, end: e.end_date })),
+    pendingLeaves: q1(`SELECT COUNT(*) n FROM leaves l JOIN employees e ON e.id=l.employee_id WHERE e.company_id=? AND l.status='demandee'`, cid).n };
+  send(res, 200, { k, latest, results, interviews, staff });
+}, { auth: true });
+
+/* =====================================================================
+   ENTRETIENS PLANIFIÉS
+   ===================================================================== */
+db.exec(`CREATE TABLE IF NOT EXISTS interviews(id INTEGER PRIMARY KEY, app_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+  company_id INTEGER NOT NULL, at INTEGER NOT NULL, place TEXT, note TEXT, by_user INTEGER, reminded INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`);
+const fmtDakar = ms => new Date(ms).toLocaleString('fr-FR', { timeZone: 'Africa/Dakar', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
+function interviewMail(kind, cu, co, title, iv) {
+  const head = { new: 'Invitation à un entretien', moved: 'Votre entretien a changé', reminder: 'Rappel : votre entretien demain', cancel: 'Entretien annulé' }[kind];
+  const body = kind === 'cancel' ? `<p>Bonjour ${esc(cu.name)},</p><p>L’entretien prévu le <b>${esc(fmtDakar(iv.at))}</b> pour le poste <b>${esc(title)}</b> chez ${esc(co.name)} est annulé. L’entreprise reviendra vers vous si besoin.</p>`
+    : `<p>Bonjour ${esc(cu.name)},</p><p>${kind === 'reminder' ? 'Nous vous rappelons votre' : `${esc(co.name)} vous ${kind === 'moved' ? 'propose une nouvelle date pour votre' : 'invite à un'}`} entretien pour le poste <b>${esc(title)}</b>.</p>
+<p style="background:#E2EFF0;border-radius:8px;padding:14px 16px"><b>${esc(fmtDakar(iv.at))}</b>${iv.place ? `<br>${esc(iv.place)}` : ''}</p>${iv.note ? `<p>${esc(iv.note)}</p>` : ''}<p style="font-size:13px;color:#4A5565">Un empêchement ? Répondez directement à cet e-mail pour prévenir l’entreprise.</p>`;
+  return { subject: `${co.name} : ${head.toLowerCase()} (${title})`, html: mailLayout(head, body, co.id) };
+}
+function ivContext(user, appId) {
+  const a = ownApp(user, appId); if (!a) return null;
+  const cu = q1(`SELECT * FROM cusers WHERE id=?`, a.cu_id), co = q1(`SELECT id,name FROM companies WHERE id=?`, a.company_id);
+  const t = a.test_id ? q1(`SELECT reply_email FROM tests WHERE id=?`, a.test_id) : null;
+  return { a, cu, co, replyTo: t?.reply_email || user.email };
+}
+on('POST', '/api/rh/applications/:id/interview', async (req, res, { user, params, body }) => {
+  const x = ivContext(user, params.id); if (!x) return fail(res, 404, 'Candidature introuvable.');
+  const at = Date.parse(body.at); if (!at || at < now() - 3600_000) return fail(res, 400, 'Choisissez une date et une heure à venir.');
+  const place = clean(body.place, 300), note = clean(body.note, 1000);
+  const prev = q1(`SELECT * FROM interviews WHERE app_id=? ORDER BY id DESC LIMIT 1`, x.a.id);
+  let iv;
+  if (prev && prev.at > now() - 86400_000) { run(`UPDATE interviews SET at=?, place=?, note=?, reminded=0 WHERE id=?`, at, place, note, prev.id); iv = q1(`SELECT * FROM interviews WHERE id=?`, prev.id); }
+  else iv = q1(`SELECT * FROM interviews WHERE id=?`, run(`INSERT INTO interviews(app_id,company_id,at,place,note,by_user,created_at) VALUES(?,?,?,?,?,?,?)`, x.a.id, x.a.company_id, at, place, note, user.id, now()).lastInsertRowid);
+  run(`UPDATE applications SET stage='entretien' WHERE id=? AND stage IN ('nouvelle','preselection')`, x.a.id);
+  let sent = false;
+  if (body.notify !== false && x.cu) {
+    const m = interviewMail(prev && prev.at > now() - 86400_000 ? 'moved' : 'new', x.cu, x.co, x.a.title, iv);
+    sent = !!(await sendMail({ to: x.cu.email, companyId: x.a.company_id, replyTo: x.replyTo, ...m })).sent;
+    pushTo(x.cu.id, { title: `Entretien : ${x.a.title}`, body: fmtDakar(iv.at), url: '/espace#/candidatures' });
+  }
+  send(res, 200, { ok: true, sent });
+}, { auth: true });
+on('DELETE', '/api/rh/interviews/:id', async (req, res, { user, params, query }) => {
+  const iv = q1(`SELECT * FROM interviews WHERE id=? AND company_id=?`, +params.id, user.company_id); if (!iv) return fail(res, 404, 'Entretien introuvable.');
+  const x = ivContext(user, iv.app_id);
+  run(`DELETE FROM interviews WHERE id=?`, iv.id);
+  if (x && x.cu && query.get('notify') !== '0' && iv.at > now()) { const m = interviewMail('cancel', x.cu, x.co, x.a.title, iv); sendMail({ to: x.cu.email, companyId: x.a.company_id, replyTo: x.replyTo, ...m }); }
+  send(res, 200, { ok: true });
+}, { auth: true });
+on('GET', '/api/rh/interviews', async (req, res, { user }) => {
+  const rows = qa(`SELECT i.*, u.name, u.phone, o.title, o.id AS offer_id FROM interviews i JOIN applications a ON a.id=i.app_id JOIN cusers u ON u.id=a.cu_id JOIN offers o ON o.id=a.offer_id
+    WHERE i.company_id=? AND i.at > ? ORDER BY i.at LIMIT 50`, user.company_id, now() - 3 * 3600_000);
+  send(res, 200, { interviews: rows.map(r => ({ id: r.id, at: r.at, place: r.place, name: r.name, phone: r.phone || '', title: r.title, offerId: r.offer_id })) });
+}, { auth: true });
+// Rappel au candidat la veille (entre 20 et 30 heures avant).
+async function interviewReminders() {
+  if (!getTransport()) return;
+  for (const iv of qa(`SELECT * FROM interviews WHERE reminded=0 AND at BETWEEN ? AND ?`, now() + 2 * 3600_000, now() + 30 * 3600_000)) {
+    run(`UPDATE interviews SET reminded=1 WHERE id=?`, iv.id);
+    const a = q1(`SELECT a.*, o.title, o.company_id, o.test_id FROM applications a JOIN offers o ON o.id=a.offer_id WHERE a.id=?`, iv.app_id); if (!a) continue;
+    const cu = q1(`SELECT * FROM cusers WHERE id=?`, a.cu_id), co = q1(`SELECT id,name FROM companies WHERE id=?`, a.company_id); if (!cu) continue;
+    const t = a.test_id ? q1(`SELECT reply_email FROM tests WHERE id=?`, a.test_id) : null;
+    await sendMail({ to: cu.email, companyId: co.id, replyTo: t?.reply_email, ...interviewMail('reminder', cu, co, a.title, iv) });
+  }
+}
+setInterval(interviewReminders, 30 * 60_000); setTimeout(interviewReminders, 90_000);
+
+/* =====================================================================
+   PERSONNEL (dossiers, congés, documents) — sans paie
+   ===================================================================== */
+db.exec(`
+CREATE TABLE IF NOT EXISTS employees(id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE, name TEXT NOT NULL,
+  email TEXT, phone TEXT, job TEXT, service TEXT, contract TEXT, start_date TEXT, end_date TEXT, active INTEGER NOT NULL DEFAULT 1, notes TEXT,
+  leave_init REAL NOT NULL DEFAULT 0, app_id INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS leaves(id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, kind TEXT NOT NULL,
+  start_date TEXT NOT NULL, end_date TEXT NOT NULL, days REAL NOT NULL, status TEXT NOT NULL DEFAULT 'validee', comment TEXT, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS emp_docs(id INTEGER PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, name TEXT NOT NULL,
+  mime TEXT NOT NULL, size INTEGER NOT NULL, created_at INTEGER NOT NULL);
+`);
+const DOC_DIR = path.join(DATA_DIR, 'docs'); fs.mkdirSync(DOC_DIR, { recursive: true });
+const LEAVE_KINDS = ['Congé payé', 'Maladie', 'Permission exceptionnelle', 'Sans solde', 'Maternité', 'Autre'];
+const isDate = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+// Jours ouvrables (lundi à samedi) entre deux dates incluses, comme pour le décompte des congés au Sénégal.
+function workDays(a, b) { let n = 0; for (let d = new Date(a + 'T12:00:00Z'); d <= new Date(b + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) if (d.getUTCDay() !== 0) n++; return n; }
+// Acquis indicatif : 2 jours ouvrables par mois de service (Code du travail), plus le solde de départ saisi.
+function leaveBalance(e) {
+  if (!isDate(e.start_date)) return null;
+  const s = new Date(e.start_date + 'T12:00:00Z'), end = e.end_date && isDate(e.end_date) && new Date(e.end_date) < new Date() ? new Date(e.end_date + 'T12:00:00Z') : new Date();
+  const months = Math.max(0, (end.getUTCFullYear() - s.getUTCFullYear()) * 12 + end.getUTCMonth() - s.getUTCMonth() - (end.getUTCDate() < s.getUTCDate() ? 1 : 0));
+  const taken = q1(`SELECT COALESCE(SUM(days),0) n FROM leaves WHERE employee_id=? AND kind='Congé payé' AND status='validee'`, e.id).n;
+  return { acquired: months * 2 + (e.leave_init || 0), taken, left: months * 2 + (e.leave_init || 0) - taken, months };
+}
+const empOut = e => ({ id: e.id, name: e.name, email: e.email || '', phone: e.phone || '', job: e.job || '', service: e.service || '', contract: e.contract || '',
+  startDate: e.start_date || '', endDate: e.end_date || '', active: !!e.active, notes: e.notes || '', leaveInit: e.leave_init || 0, balance: leaveBalance(e) });
+const ownEmp = (user, id) => q1(`SELECT * FROM employees WHERE id=? AND company_id=?`, +id, user.company_id);
+function readEmp(body) {
+  const name = clean(body.name, 120); if (!name) throw Object.assign(new Error('Indiquez le nom du salarié.'), { code: 400 });
+  const email = clean(body.email, 200).toLowerCase(); if (email && !isEmail(email)) throw Object.assign(new Error('Adresse e-mail invalide.'), { code: 400 });
+  return { name, email, phone: clean(body.phone, 40), job: clean(body.job, 120), service: clean(body.service, 120), contract: CONTRACTS.includes(body.contract) ? body.contract : '',
+    start: isDate(body.startDate) ? body.startDate : null, end: isDate(body.endDate) ? body.endDate : null, notes: clean(body.notes, 3000),
+    init: Math.max(-60, Math.min(120, +body.leaveInit || 0)), active: body.active === false ? 0 : 1 };
+}
+on('GET', '/api/rh/employees', async (req, res, { user }) => {
+  const rows = qa(`SELECT * FROM employees WHERE company_id=? ORDER BY active DESC, name`, user.company_id);
+  const soon = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10), today = new Date().toISOString().slice(0, 10);
+  const away = new Set(qa(`SELECT l.employee_id FROM leaves l JOIN employees e ON e.id=l.employee_id WHERE e.company_id=? AND l.status='validee' AND l.start_date<=? AND l.end_date>=?`, user.company_id, today, today).map(r => r.employee_id));
+  const pending = q1(`SELECT COUNT(*) n FROM leaves l JOIN employees e ON e.id=l.employee_id WHERE e.company_id=? AND l.status='demandee'`, user.company_id).n;
+  send(res, 200, { employees: rows.map(e => ({ ...empOut(e), away: away.has(e.id), endingSoon: e.active && e.end_date && e.end_date >= today && e.end_date <= soon })), contracts: CONTRACTS, kinds: LEAVE_KINDS, pending });
+}, { auth: true });
+on('POST', '/api/rh/employees', async (req, res, { user, body }) => {
+  let b; try { b = readEmp(body); } catch (e) { return fail(res, e.code || 400, e.message); }
+  const appId = body.appId ? (ownApp(user, body.appId) ? +body.appId : null) : null;
+  const id = run(`INSERT INTO employees(company_id,name,email,phone,job,service,contract,start_date,end_date,notes,leave_init,active,app_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    user.company_id, b.name, b.email, b.phone, b.job, b.service, b.contract, b.start, b.end, b.notes, b.init, b.active, appId, now()).lastInsertRowid;
+  if (appId) run(`UPDATE applications SET stage='embauche' WHERE id=?`, appId);
+  send(res, 200, { id });
+}, { auth: true });
+on('GET', '/api/rh/employees/:id', async (req, res, { user, params }) => {
+  const e = ownEmp(user, params.id); if (!e) return fail(res, 404, 'Salarié introuvable.');
+  send(res, 200, { employee: empOut(e), contracts: CONTRACTS, kinds: LEAVE_KINDS,
+    leaves: qa(`SELECT * FROM leaves WHERE employee_id=? ORDER BY start_date DESC`, e.id).map(l => ({ id: l.id, kind: l.kind, start: l.start_date, end: l.end_date, days: l.days, status: l.status, comment: l.comment || '' })),
+    docs: qa(`SELECT id,name,mime,size,created_at FROM emp_docs WHERE employee_id=? ORDER BY created_at DESC`, e.id).map(d => ({ id: d.id, name: d.name, size: d.size, createdAt: d.created_at })) });
+}, { auth: true });
+on('PUT', '/api/rh/employees/:id', async (req, res, { user, params, body }) => {
+  const e = ownEmp(user, params.id); if (!e) return fail(res, 404, 'Salarié introuvable.');
+  let b; try { b = readEmp(body); } catch (x) { return fail(res, x.code || 400, x.message); }
+  run(`UPDATE employees SET name=?,email=?,phone=?,job=?,service=?,contract=?,start_date=?,end_date=?,notes=?,leave_init=?,active=? WHERE id=?`, b.name, b.email, b.phone, b.job, b.service, b.contract, b.start, b.end, b.notes, b.init, b.active, e.id);
+  send(res, 200, { ok: true });
+}, { auth: true });
+on('DELETE', '/api/rh/employees/:id', async (req, res, { user, params }) => {
+  const e = ownEmp(user, params.id); if (!e) return fail(res, 404, 'Salarié introuvable.');
+  for (const d of qa(`SELECT id FROM emp_docs WHERE employee_id=?`, e.id)) { try { fs.rmSync(path.join(DOC_DIR, `${d.id}.bin`)); } catch {} }
+  run(`DELETE FROM employees WHERE id=?`, e.id); send(res, 200, { ok: true });
+}, { auth: true });
+on('POST', '/api/rh/employees/:id/leaves', async (req, res, { user, params, body }) => {
+  const e = ownEmp(user, params.id); if (!e) return fail(res, 404, 'Salarié introuvable.');
+  if (!isDate(body.start) || !isDate(body.end) || body.end < body.start) return fail(res, 400, 'Indiquez des dates de début et de fin valides.');
+  const kind = LEAVE_KINDS.includes(body.kind) ? body.kind : 'Congé payé', days = body.days != null && body.days !== '' ? Math.max(0.5, Math.min(365, +body.days)) : workDays(body.start, body.end);
+  const status = { demandee: 'demandee', validee: 'validee', refusee: 'refusee' }[body.status] || 'validee';
+  run(`INSERT INTO leaves(employee_id,kind,start_date,end_date,days,status,comment,created_at) VALUES(?,?,?,?,?,?,?,?)`, e.id, kind, body.start, body.end, days, status, clean(body.comment, 500), now());
+  send(res, 200, { ok: true });
+}, { auth: true });
+on('PUT', '/api/rh/leaves/:id', async (req, res, { user, params, body }) => {
+  const l = q1(`SELECT l.* FROM leaves l JOIN employees e ON e.id=l.employee_id WHERE l.id=? AND e.company_id=?`, +params.id, user.company_id); if (!l) return fail(res, 404, 'Absence introuvable.');
+  const status = { demandee: 'demandee', validee: 'validee', refusee: 'refusee' }[body.status]; if (!status) return fail(res, 400, 'Statut inconnu.');
+  run(`UPDATE leaves SET status=? WHERE id=?`, status, l.id); send(res, 200, { ok: true });
+}, { auth: true });
+on('DELETE', '/api/rh/leaves/:id', async (req, res, { user, params }) => {
+  const l = q1(`SELECT l.* FROM leaves l JOIN employees e ON e.id=l.employee_id WHERE l.id=? AND e.company_id=?`, +params.id, user.company_id); if (!l) return fail(res, 404, 'Absence introuvable.');
+  run(`DELETE FROM leaves WHERE id=?`, l.id); send(res, 200, { ok: true });
+}, { auth: true });
+const DOC_TYPES = { '%PDF-': 'application/pdf', '\x89PNG': 'image/png', '\xff\xd8\xff': 'image/jpeg' };
+on('POST', '/api/rh/employees/:id/docs', async (req, res, { user, params, body }) => {
+  const e = ownEmp(user, params.id); if (!e) return fail(res, 404, 'Salarié introuvable.');
+  const buf = Buffer.from(String(body.data || ''), 'base64'); if (buf.length < 50) return fail(res, 400, 'Fichier vide.');
+  if (buf.length > 5 * 1024 * 1024) return fail(res, 413, 'Le fichier ne doit pas dépasser 5 Mo.');
+  const head = buf.subarray(0, 5).toString('latin1'), mime = Object.entries(DOC_TYPES).find(([k]) => head.startsWith(k))?.[1];
+  if (!mime) return fail(res, 400, 'Formats acceptés : PDF, JPEG ou PNG.');
+  const id = run(`INSERT INTO emp_docs(employee_id,name,mime,size,created_at) VALUES(?,?,?,?,?)`, e.id, clean(body.name, 160) || 'document', mime, buf.length, now()).lastInsertRowid;
+  fs.writeFileSync(path.join(DOC_DIR, `${id}.bin`), buf); send(res, 200, { id });
+}, { auth: true, maxBody: 7_200_000 });
+on('GET', '/api/rh/docs/:id', async (req, res, { user, params }) => {
+  const d = q1(`SELECT d.* FROM emp_docs d JOIN employees e ON e.id=d.employee_id WHERE d.id=? AND e.company_id=?`, +params.id, user.company_id); if (!d) return fail(res, 404, 'Document introuvable.');
+  const f = path.join(DOC_DIR, `${d.id}.bin`); if (!fs.existsSync(f)) return fail(res, 404, 'Fichier manquant.');
+  res.writeHead(200, { 'Content-Type': d.mime, 'Content-Disposition': `inline; filename="${String(d.name).replace(/[^\w.\- ]/g, '_')}"`, 'Cache-Control': 'private, no-store' }); res.end(fs.readFileSync(f));
+}, { auth: true });
+on('DELETE', '/api/rh/docs/:id', async (req, res, { user, params }) => {
+  const d = q1(`SELECT d.* FROM emp_docs d JOIN employees e ON e.id=d.employee_id WHERE d.id=? AND e.company_id=?`, +params.id, user.company_id); if (!d) return fail(res, 404, 'Document introuvable.');
+  try { fs.rmSync(path.join(DOC_DIR, `${d.id}.bin`)); } catch {} run(`DELETE FROM emp_docs WHERE id=?`, d.id); send(res, 200, { ok: true });
 }, { auth: true });
 
 /* équipe : plusieurs recruteurs par entreprise */
@@ -1040,6 +1229,7 @@ const server = http.createServer(async (req, res) => {
     if (/^\/offre\/\d+(-[a-z0-9-]*)?$/.test(p)) {
       const o = q1(`SELECT o.*, c.name AS company, c.logo_v FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=? AND c.status='valide'`, +p.split('/')[2].split('-')[0]);
       if (!o) { res.writeHead(302, { Location: '/espace#/offres' }); return res.end(); }
+      countView(req, o.id);
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }); return res.end(offerPage(o));
     }
     if (/^\/verifier\/[\w-]+$/.test(p)) {
