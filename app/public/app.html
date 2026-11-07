@@ -273,8 +273,10 @@ V.account=function(){
   '<div class="col" style="gap:8px"><label class="btn primary" style="cursor:pointer">Choisir une image<input type="file" id="logofile" accept="image/png,image/jpeg,image/webp" hidden></label>'+(ME.logo?'<button class="link" id="logodel" style="color:var(--danger)">Retirer le logo</button>':'')+'</div></div></div>'+
   '<form class="card form" id="fp"><h2>Changer de mot de passe</h2><label class="field">Mot de passe actuel<input class="in" type="password" name="current" required autocomplete="current-password"></label>'+
   '<label class="field">Nouveau mot de passe <span class="hint">8 caractères au moins</span><input class="in" type="password" name="password" minlength="8" required autocomplete="new-password"></label><p class="err" hidden></p><div><button class="btn primary" type="submit">Changer</button></div></form>'+
+  '<div class="card col" id="team"><p class="muted">Chargement de l’équipe…</p></div>'+
   (ME.superadmin?'<div id="mailcfg" class="card"><p class="muted">Chargement des réglages e-mail…</p></div>':'')+'</div>';
   bindForm('#fp',function(d,f){return api('POST','/api/password',d).then(function(){f.reset();toast('Mot de passe changé.');});});
+  loadTeam();
   $('#logofile').addEventListener('change',function(){
     var f=this.files[0];if(!f)return;
     var img=new Image(),url=URL.createObjectURL(f);
@@ -304,6 +306,8 @@ V.account=function(){
 
 /* ---------- offres d'emploi (côté recruteur) ---------- */
 var ASTAT={recue:['Reçue','neutral'],test_envoye:['Test envoyé','info'],retenue:['Retenue','ok'],refusee:['Non retenue','warn']};
+var STAGES=[['all','Toutes',''],['nouvelle','Nouvelles','Nouvelle'],['preselection','Présélection','Présélection'],['entretien','Entretien','Entretien'],['embauche','Embauchés','Embauché'],['refusee','Refusées','Refusée']],OFILT='all';
+var STG_MSG={entretien:'Le candidat recevra un e-mail lui annonçant que vous souhaitez le rencontrer. Vous le contacterez ensuite pour fixer la date.',embauche:'Le candidat recevra un e-mail lui annonçant que sa candidature est retenue.',refusee:'Le candidat recevra un e-mail courtois l’informant que vous ne donnez pas suite.'};
 function photoOr(name,url){return url?'<img src="'+esc(url)+'" alt="" style="flex:none;width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.outerHTML=\''+avatar(name).replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\'">':avatar(name);}
 V.offres=function(){
   chrome('offres');var rt=ROUTE;
@@ -339,12 +343,12 @@ V.offre=function(id){
   api('GET','/api/rh/offers/'+id).then(function(r){if(rt!==ROUTE)return;var o=r.offer,apps=r.applications;
     app.innerHTML='<div class="wrap col"><a href="#/offres" class="small">← Offres</a><div class="row between"><div><h1>'+esc(o.title)+'</h1><p class="muted" style="margin-top:4px">'+esc([o.familyName,o.city,o.contract].filter(Boolean).join(' · '))+' · '+(o.status==='ouverte'?'ouverte':'fermée')+'</p></div>'+
     '<div class="row"><a class="btn" href="/espace#/offre/'+o.id+'" target="_blank" rel="noopener">Voir l’annonce</a><a class="btn" href="#/offres/'+o.id+'/edit">Modifier</a><button class="btn" id="tog">'+(o.status==='ouverte'?'Fermer l’offre':'Rouvrir')+'</button></div></div>'+
-    '<div class="card tight"><div class="row between" style="padding:14px 16px;border-bottom:1px solid var(--line-soft)"><h2>Candidatures ('+apps.length+')</h2></div><div class="table-wrap"><table><thead><tr><th>Candidat</th><th>Reçue le</th><th>Statut</th><th class="num">Test</th><th></th></tr></thead><tbody>'+
-    (apps.length?apps.map(function(a){var s=(a.status==='test_envoye'&&a.test&&a.test.status==='termine')?['Test terminé','ok']:(ASTAT[a.status]||[a.status,'neutral']);
+    '<div class="card tight"><div style="padding:14px 16px;border-bottom:1px solid var(--line-soft)" class="col"><h2>Candidatures ('+apps.length+')</h2><div class="chips" id="stg">'+STAGES.map(function(x){var n=x[0]==='all'?apps.length:apps.filter(function(a){return (a.stage||'nouvelle')===x[0];}).length;return '<button class="chip'+(OFILT===x[0]?' on':'')+'" data-f="'+x[0]+'">'+x[1]+' · '+n+'</button>';}).join('')+'</div></div><div class="table-wrap"><table><thead><tr><th>Candidat</th><th>Reçue le</th><th class="num">Test</th><th>Étape</th><th></th></tr></thead><tbody>'+
+    (function(){var list=apps.filter(function(a){return OFILT==='all'||(a.stage||'nouvelle')===OFILT;});return list.length?list.map(function(a){
       return '<tr><td><div class="row" style="gap:10px;flex-wrap:nowrap">'+photoOr(a.name,a.photo)+'<div><b>'+esc(a.name)+'</b><div class="small muted">'+esc(a.headline||a.familyName)+'</div><div class="small muted">'+esc(a.email)+(a.phone?' · '+esc(a.phone):'')+(a.city?' · '+esc(a.city):'')+'</div></div></div></td>'+
-      '<td class="small">'+fmtDate(a.createdAt)+'</td><td><span class="pill '+s[1]+'">'+s[0]+'</span></td><td class="num">'+(a.test?(a.test.status==='termine'?'<b>'+a.test.global+' %</b>':'<span class="small muted">'+(a.test.status==='en_cours'?'en cours':'envoyé')+'</span>'):'<span class="small muted">—</span>')+'</td>'+
-      '<td><div class="row" style="gap:6px;flex-wrap:nowrap">'+(a.cv?'<a class="btn sm" href="'+esc(a.cv)+'" target="_blank" rel="noopener">CV</a>':'')+(a.message?'<button class="btn sm" data-msg="'+a.id+'">Message</button>':'')+(!a.test?'<button class="btn sm" data-test="'+a.id+'">Envoyer le test</button>':'')+
-      '<button class="btn sm" data-ok="'+a.id+'">Retenir</button><button class="btn sm danger" data-no="'+a.id+'">Refuser</button></div></td></tr>';}).join(''):'<tr><td colspan="5" class="empty">Aucune candidature pour l’instant. Partagez le lien de l’annonce.</td></tr>')+
+      '<td class="small">'+fmtDate(a.createdAt)+'</td><td class="num">'+(a.test?(a.test.status==='termine'?'<b>'+a.test.global+' %</b>':'<span class="small muted">'+(a.test.status==='en_cours'?'en cours':'envoyé')+'</span>'):'<span class="small muted">—</span>')+'</td>'+
+      '<td><select class="in" data-stage="'+a.id+'" style="min-height:34px;width:auto;padding:4px 8px" aria-label="Étape pour '+esc(a.name)+'">'+STAGES.slice(1).map(function(x){return '<option value="'+x[0]+'"'+((a.stage||'nouvelle')===x[0]?' selected':'')+'>'+x[2]+'</option>';}).join('')+'</select></td>'+
+      '<td><div class="row" style="gap:6px;flex-wrap:nowrap">'+(a.cv?'<a class="btn sm" href="'+esc(a.cv)+'" target="_blank" rel="noopener">CV</a>':'')+(a.message?'<button class="btn sm" data-msg="'+a.id+'">Message</button>':'')+(!a.test?'<button class="btn sm" data-test="'+a.id+'">Envoyer le test</button>':'')+'</div></td></tr>';}).join(''):'<tr><td colspan="5" class="empty">'+(apps.length?'Aucune candidature à cette étape.':'Aucune candidature pour l’instant. Partagez le lien de l’annonce.')+'</td></tr>';})()+
     '</tbody></table></div></div>'+(o.testId?'<p class="small muted">Les résultats détaillés du test sont dans <a href="#/tests/'+o.testId+'">le classement du test associé</a>.</p>':'')+
     '<div><button class="link" id="del" style="color:var(--danger)">Supprimer cette offre et ses candidatures</button></div></div>';
     $('#tog').addEventListener('click',function(){api('PUT','/api/rh/offers/'+o.id,{status:o.status==='ouverte'?'fermee':'ouverte'}).then(function(){route();}).catch(handle);});
@@ -353,11 +357,13 @@ V.offre=function(id){
     app.querySelector('tbody').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;
       if(b.dataset.msg){var a=apps.filter(function(x){return x.id==b.dataset.msg;})[0];modal('<h2>Message de '+esc(a.name)+'</h2><p style="white-space:pre-wrap;margin:12px 0 18px">'+esc(a.message)+'</p><button class="btn" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Fermer</button>');}
       else if(b.dataset.test){if(!o.testId){toast('Associez d’abord un test à cette offre (bouton Modifier).');return;}busy(b,true);api('POST','/api/rh/applications/'+b.dataset.test+'/invite',{}).then(function(){toast('Test envoyé.');route();}).catch(handle).then(function(){busy(b,false);});}
-      else if(b.dataset.ok||b.dataset.no){var st=b.dataset.ok?'retenue':'refusee',aid=b.dataset.ok||b.dataset.no;
-        modal('<h2>'+(st==='retenue'?'Retenir cette candidature ?':'Refuser cette candidature ?')+'</h2><p class="muted" style="margin:10px 0 18px">Le candidat sera prévenu par e-mail et sur son téléphone, avec un message courtois.</p><div class="row"><button class="btn primary" id="yes">Confirmer et prévenir</button><button class="btn" id="silent">Sans prévenir</button><button class="btn" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Annuler</button></div>');
-        $('#yes').addEventListener('click',function(){api('PUT','/api/rh/applications/'+aid,{status:st}).then(function(){closeModal();toast('Candidat prévenu.');route();}).catch(handle);});
-        $('#silent').addEventListener('click',function(){api('PUT','/api/rh/applications/'+aid,{status:st,notify:false}).then(function(){closeModal();route();}).catch(handle);});}
     });
+    $('#stg').addEventListener('click',function(e){var c=e.target.closest('[data-f]');if(!c)return;OFILT=c.dataset.f;route();});
+    app.querySelectorAll('[data-stage]').forEach(function(sel){var prev=sel.value;sel.addEventListener('change',function(){var st=sel.value,aid=sel.dataset.stage;
+      var save=function(notify){return api('PUT','/api/rh/applications/'+aid,{stage:st,notify:notify}).then(function(){closeModal();toast(notify?'Étape enregistrée, candidat prévenu.':'Étape enregistrée.');route();}).catch(handle);};
+      if(!STG_MSG[st]){save(false);return;}
+      modal('<h2>Passer à l’étape « '+esc(STAGES.filter(function(x){return x[0]===st;})[0][2])+' » ?</h2><p class="muted" style="margin:10px 0 18px">'+STG_MSG[st]+'</p><div class="row"><button class="btn primary" id="yes">Confirmer et prévenir</button><button class="btn" id="silent">Sans prévenir</button><button class="btn" id="no">Annuler</button></div>');
+      $('#yes').addEventListener('click',function(){save(true);});$('#silent').addEventListener('click',function(){save(false);});$('#no').addEventListener('click',function(){sel.value=prev;closeModal();});});});
   }).catch(handle);
 };
 
@@ -369,17 +375,41 @@ V.accueil=function(){
     var next=!k.tests?['Créez votre premier test','Choisissez le métier, le nombre de questions et le temps : deux minutes suffisent.','#/tests/new','Créer un test']
       :!k.offers?['Publiez votre première offre','Les candidats du métier seront prévenus et le test leur partira tout seul.','#/offres/new','Publier une offre']
       :['Votre recrutement avance',k.appsWeek+' candidature'+(k.appsWeek>1?'s':'')+' reçue'+(k.appsWeek>1?'s':'')+' ces 7 derniers jours.','#/offres','Voir mes offres'];
-    var ASTAT2={recue:['Reçue','neutral'],test_envoye:['Test envoyé','info'],retenue:['Retenue','ok'],refusee:['Non retenue','warn']};
+    var ASTAT2={recue:['Reçue','neutral'],test_envoye:['Test envoyé','info'],retenue:['Retenue','ok'],refusee:['Non retenue','warn'],preselection:['Présélection','info'],entretien:['Entretien','info'],embauche:['Embauché','ok']};
     app.innerHTML='<div class="wrap col">'+
     '<section class="welcome"><div><p class="hello">'+(h<12?'Bonjour':h<18?'Bon après-midi':'Bonsoir')+' '+esc(first)+'</p><h1>'+esc(next[0])+'</h1><p>'+esc(next[1])+'</p></div><a class="btn primary" href="'+next[2]+'">'+esc(next[3])+'</a></section>'+
     '<div class="kpis"><div class="kpi accent"><span class="small">Offres ouvertes</span><b>'+k.offers+'</b></div><div class="kpi"><span class="small muted">Candidatures reçues</span><b>'+k.apps+'</b><span class="small muted">dont '+k.appsWeek+' cette semaine</span></div><div class="kpi"><span class="small muted">Tests terminés</span><b>'+k.done+'</b><span class="small muted">sur '+k.tests+' test'+(k.tests>1?'s':'')+' actif'+(k.tests>1?'s':'')+'</span></div><div class="kpi"><span class="small muted">Note moyenne</span><b>'+(k.avg!=null?k.avg+' %':'–')+'</b></div></div>'+
     '<div class="two" style="gap:16px;align-items:start"><div class="card tight"><div style="padding:14px 16px;border-bottom:1px solid var(--line-soft)"><h2>Dernières candidatures</h2></div><div class="feed">'+
-      (d.latest.length?d.latest.map(function(a){var s=ASTAT2[a.status]||[a.status,'neutral'];return '<a href="#/offres/'+a.offerId+'">'+photoOr(a.name,a.photo)+'<div class="grow"><b>'+esc(a.name)+'</b><div class="small muted">'+esc(a.title)+', le '+fmtDate(a.createdAt)+'</div></div>'+(a.score!=null?'<b>'+a.score+' %</b>':'<span class="pill '+s[1]+'">'+s[0]+'</span>')+'</a>';}).join(''):'<div class="empty">'+GR.empty('offres')+'Les candidatures de vos offres apparaîtront ici.</div>')+
+      (d.latest.length?d.latest.map(function(a){var s=(a.stage&&a.stage!=='nouvelle'?ASTAT2[a.stage]:null)||ASTAT2[a.status]||[a.status,'neutral'];return '<a href="#/offres/'+a.offerId+'">'+photoOr(a.name,a.photo)+'<div class="grow"><b>'+esc(a.name)+'</b><div class="small muted">'+esc(a.title)+', le '+fmtDate(a.createdAt)+'</div></div>'+(a.score!=null?'<b>'+a.score+' %</b>':'<span class="pill '+s[1]+'">'+s[0]+'</span>')+'</a>';}).join(''):'<div class="empty">'+GR.empty('offres')+'Les candidatures de vos offres apparaîtront ici.</div>')+
     '</div></div><div class="card tight"><div style="padding:14px 16px;border-bottom:1px solid var(--line-soft)"><h2>Derniers tests terminés</h2></div><div class="feed">'+
       (d.results.length?d.results.map(function(c){return '<a href="#/tests/'+c.test_id+'">'+avatar(c.name)+'<div class="grow"><b>'+esc(c.name)+'</b><div class="small muted">'+esc(c.title)+'</div></div><div style="width:90px"><div class="bar"><i style="width:'+c.global+'%"></i></div></div><b>'+c.global+' %</b></a>';}).join(''):'<div class="empty">'+GR.empty('tests')+'Les résultats arriveront ici dès qu’un candidat aura terminé un test.</div>')+
     '</div></div></div>'+
     '<div class="row"><a class="btn primary" href="#/offres/new">+ Publier une offre</a><a class="btn" href="#/tests/new">+ Nouveau test</a><a class="btn" href="/espace" target="_blank" rel="noopener">Voir l’espace candidat</a></div></div>';
   }).catch(handle);
+};
+
+/* ---------- équipe de recrutement ---------- */
+function loadTeam(){var box=$('#team');if(!box)return;
+  api('GET','/api/team').then(function(t){
+    box.innerHTML='<div><h2>Équipe de recrutement</h2><p class="muted" style="margin-top:4px">Vos collègues partagent les tests, les offres et les candidatures de '+esc(ME.company)+'. Chacun a son propre accès.</p></div>'+
+    '<div class="feed" style="border:1px solid var(--line-soft);border-radius:10px">'+t.members.map(function(m){return '<div class="row" style="padding:10px 12px;gap:10px;flex-wrap:nowrap">'+avatar(m.name)+'<div class="grow"><b>'+esc(m.name)+(m.me?' (vous)':'')+'</b><div class="small muted">'+esc(m.email)+' · '+(m.role==='recruteur'?'Recruteur':'Administrateur du compte')+'</div></div>'+(t.canManage&&!m.me?'<button class="btn sm danger" data-rm="'+m.id+'">Retirer</button>':'')+'</div>';}).join('')+
+    t.pending.map(function(p){return '<div class="row" style="padding:10px 12px;gap:10px;flex-wrap:nowrap">'+avatar(p.name)+'<div class="grow"><b>'+esc(p.name)+'</b><div class="small muted">'+esc(p.email)+' · invitation envoyée, en attente</div></div></div>';}).join('')+'</div>'+
+    (t.canManage?'<form class="form" id="ft"><div class="two"><label class="field">Nom du collègue<input class="in" name="name" required maxlength="120"></label><label class="field">Son adresse e-mail<input class="in" name="email" type="email" required></label></div><p class="err" hidden></p><div><button class="btn primary" type="submit">Inviter</button></div></form>':'<p class="small muted">Seul l’administrateur du compte peut inviter ou retirer des collègues.</p>');
+    if(t.canManage)bindForm('#ft',function(d){return api('POST','/api/team/invite',d).then(function(r){
+      if(r.sent)toast('Invitation envoyée à '+d.email+'.');else modal('<h2>Invitation créée</h2><p class="muted" style="margin:10px 0">L’e-mail n’a pas pu partir. Envoyez ce lien à votre collègue (valable 7 jours) :</p><p><input class="in" readonly value="'+esc(r.link)+'" onclick="this.select()"></p><button class="btn" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Fermer</button>');
+      loadTeam();});});
+    box.querySelectorAll('[data-rm]').forEach(function(b){b.addEventListener('click',function(){var m=t.members.filter(function(x){return x.id==b.dataset.rm;})[0];
+      modal('<h2>Retirer '+esc(m.name)+' ?</h2><p class="muted" style="margin:10px 0 18px">Son accès sera supprimé immédiatement. Les tests, offres et candidatures restent dans le compte.</p><div class="row"><button class="btn primary" id="yes" style="background:var(--danger);border-color:var(--danger)">Retirer</button><button class="btn" onclick="document.getElementById(\'modal\').innerHTML=\'\'">Annuler</button></div>');
+      $('#yes').addEventListener('click',function(){api('DELETE','/api/team/'+m.id).then(function(){closeModal();toast('Accès retiré.');loadTeam();}).catch(handle);});});});
+  }).catch(function(e){box.innerHTML='<p class="note warn">'+esc(e.message)+'</p>';});
+}
+V.join=function(tok){
+  api('GET','/api/team/join/'+tok).then(function(i){
+    authPage('Rejoindre '+esc(i.company),'Créez votre accès à l’espace de recrutement de '+esc(i.company)+'.',
+    '<form class="form" id="f"><label class="field">Votre nom<input class="in" name="name" required value="'+esc(i.name)+'"></label><label class="field">Adresse e-mail<input class="in" value="'+esc(i.email)+'" disabled></label>'+
+    '<label class="field">Choisissez un mot de passe <span class="hint">8 caractères au moins</span><input class="in" name="password" type="password" minlength="8" required autocomplete="new-password"></label><p class="err" hidden></p><button class="btn primary block" type="submit">Créer mon accès</button></form>');
+    bindForm('#f',function(d){d.token=tok;return api('POST','/api/team/join',d).then(function(r){ME=r.user;toast('Bienvenue dans l’équipe de '+i.company+'.');location.hash='#/accueil';});});
+  }).catch(function(e){authPage('Lien non valable',esc(e.message),'<a class="btn block" href="#/login">Aller à la connexion</a>');});
 };
 
 /* ---------- administration (propriétaire de la plateforme) ---------- */
@@ -412,9 +442,10 @@ V.admin=function(){
 /* ---------- routeur ---------- */
 function handle(e){if(e.status===401){ME=null;location.hash='#/login';return;}if(e.status===404){app.innerHTML='<div class="wrap"><div class="card empty"><h2 style="color:var(--fg)">Page introuvable</h2><p style="margin:8px 0 16px">'+esc(e.message)+'</p><a class="btn" href="#/tests">Retour à mes tests</a></div></div>';return;}toast(e.message);}
 var ROUTE=0;
-function route(){ROUTE++;
+function route(){ROUTE++;closeModal();
   var h=location.hash.replace(/^#\/?/,'')||'accueil',p=h.split('/');
-  var pub={login:1,signup:1,forgot:1,reset:1};
+  var pub={login:1,signup:1,forgot:1,reset:1,rejoindre:1};
+  if(p[0]==='rejoindre')return V.join(p[1]||'');
   if(!ME&&!pub[p[0]]){location.hash='#/login';return;}
   if(ME&&(p[0]==='login'||p[0]==='signup')){location.hash='#/accueil';return;}
   window.scrollTo(0,0);
@@ -422,7 +453,7 @@ function route(){ROUTE++;
   if(p[0]==='accueil'&&p[1]==='verifie'){ME.verified=true;history.replaceState(null,'','#/accueil');toast('Adresse e-mail confirmée. Merci !');}
   if(p[0]==='offres'&&p[1]==='new')return V.offreForm(null);
   if(p[0]==='offres'&&p[1]&&p[2]==='edit')return V.offreForm(p[1]);
-  if(p[0]==='offres'&&p[1])return V.offre(p[1]);
+  if(p[0]==='offres'&&p[1]){if(V._lo!==p[1]){OFILT='all';V._lo=p[1];}return V.offre(p[1]);}
   if(p[0]==='tests'&&p[1]==='new')return V.testForm(null);
   if(p[0]==='tests'&&p[1]&&p[2]==='edit')return V.testForm(p[1]);
   if(p[0]==='tests'&&p[1]){if(V._last!==p[1]){filt={q:'',st:''};V._last=p[1];}return V.test(p[1]);}

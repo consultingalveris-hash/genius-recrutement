@@ -51,7 +51,8 @@ try { db.exec(`ALTER TABLE companies ADD COLUMN logo TEXT`); } catch {}
 try { db.exec(`ALTER TABLE companies ADD COLUMN logo_v INTEGER`); } catch {}
 for (const sql of [`ALTER TABLE tests ADD COLUMN level TEXT NOT NULL DEFAULT 'confirme'`, `ALTER TABLE tests ADD COLUMN family TEXT NOT NULL DEFAULT 'cc'`, `ALTER TABLE candidates ADD COLUMN perms TEXT`,
   `ALTER TABLE candidates ADD COLUMN qtime TEXT`, `ALTER TABLE candidates ADD COLUMN cur TEXT`, `ALTER TABLE candidates ADD COLUMN cur_since INTEGER`]) { try { db.exec(sql); } catch {} }
-for (const sql of [`ALTER TABLE companies ADD COLUMN status TEXT NOT NULL DEFAULT 'valide'`, `ALTER TABLE users ADD COLUMN verified INTEGER NOT NULL DEFAULT 1`]) { try { db.exec(sql); } catch {} }
+for (const sql of [`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'`, `ALTER TABLE companies ADD COLUMN status TEXT NOT NULL DEFAULT 'valide'`, `ALTER TABLE users ADD COLUMN verified INTEGER NOT NULL DEFAULT 1`]) { try { db.exec(sql); } catch {} }
+db.exec(`CREATE TABLE IF NOT EXISTS team_invites(token TEXT PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE, name TEXT NOT NULL, email TEXT NOT NULL, by_user INTEGER, expires INTEGER NOT NULL)`);
 db.exec(`CREATE TABLE IF NOT EXISTS verifs(token TEXT PRIMARY KEY, kind TEXT NOT NULL, ref_id INTEGER NOT NULL, expires INTEGER NOT NULL)`);
 const q1 = (sql, ...a) => db.prepare(sql).get(...a);
 const qa = (sql, ...a) => db.prepare(sql).all(...a);
@@ -237,14 +238,14 @@ function setSession(res, userId) {
 }
 function currentUser(req) {
   const tok = cookies(req).gr_s; if (!tok) return null;
-  return q1(`SELECT u.id,u.name,u.email,u.company_id,u.verified,c.name AS company,c.status AS cstatus FROM sessions s JOIN users u ON u.id=s.user_id JOIN companies c ON c.id=u.company_id WHERE s.token=? AND s.expires>?`, sha(tok), now()) || null;
+  return q1(`SELECT u.id,u.name,u.email,u.company_id,u.verified,u.role,c.name AS company,c.status AS cstatus FROM sessions s JOIN users u ON u.id=s.user_id JOIN companies c ON c.id=u.company_id WHERE s.token=? AND s.expires>?`, sha(tok), now()) || null;
 }
 const attempts = new Map();
 function tooMany(key) {
   const t = now(), a = (attempts.get(key) || []).filter(x => t - x < 15 * 60_000); a.push(t); attempts.set(key, a); return a.length > 10;
 }
 const isSuper = u => !!SUPERADMIN && u.email === SUPERADMIN;
-const userOut = u => ({ name: u.name, email: u.email, company: u.company, logo: logoUrl(u.company_id), superadmin: isSuper(u), verified: !!u.verified, companyStatus: u.cstatus || 'valide' });
+const userOut = u => ({ name: u.name, email: u.email, company: u.company, logo: logoUrl(u.company_id), superadmin: isSuper(u), verified: !!u.verified, companyStatus: u.cstatus || 'valide', role: u.role || 'admin' });
 // Peut envoyer des e-mails aux candidats et publier des offres visibles : adresse confirmée et entreprise validée.
 const canReach = u => isSuper(u) || (!!u.verified && u.cstatus === 'valide');
 const reachMsg = u => !u.verified ? 'Confirmez d’abord votre adresse e-mail (lien reçu à l’inscription) : les envois aux candidats seront alors possibles.'
@@ -292,7 +293,7 @@ on('POST', '/api/signup', async (req, res, { body }) => {
   }
   send(res, 200, { user: userOut(currentUserById(uid)) });
 });
-const currentUserById = id => q1(`SELECT u.id,u.name,u.email,u.company_id,u.verified,c.name AS company,c.status AS cstatus FROM users u JOIN companies c ON c.id=u.company_id WHERE u.id=?`, id);
+const currentUserById = id => q1(`SELECT u.id,u.name,u.email,u.company_id,u.verified,u.role,c.name AS company,c.status AS cstatus FROM users u JOIN companies c ON c.id=u.company_id WHERE u.id=?`, id);
 on('POST', '/api/login', async (req, res, { body, ip }) => {
   const email = clean(body.email, 200).toLowerCase();
   if (tooMany('l:' + ip + email)) return fail(res, 429, 'Trop de tentatives. Réessayez dans 15 minutes.');
@@ -572,6 +573,7 @@ CREATE TABLE IF NOT EXISTS push_subs(endpoint TEXT PRIMARY KEY, cu_id INTEGER NO
 `);
 try { db.exec(`ALTER TABLE candidates ADD COLUMN cu_id INTEGER`); } catch {}
 try { db.exec(`ALTER TABLE cusers ADD COLUMN verified INTEGER NOT NULL DEFAULT 1`); } catch {}
+try { db.exec(`ALTER TABLE applications ADD COLUMN stage TEXT NOT NULL DEFAULT 'nouvelle'`); db.exec(`UPDATE applications SET stage='preselection' WHERE status='retenue'`); db.exec(`UPDATE applications SET stage='refusee' WHERE status='refusee'`); } catch {}
 try { db.exec(`ALTER TABLE offers ADD COLUMN announced INTEGER NOT NULL DEFAULT 1`); } catch {}
 const CV_DIR = path.join(DATA_DIR, 'cv'); fs.mkdirSync(CV_DIR, { recursive: true });
 const CONTRACTS = ['CDI', 'CDD', 'Stage', 'Alternance', 'Consultance', 'Intérim', 'Freelance', 'Temps partiel'];
@@ -770,7 +772,7 @@ on('GET', '/api/cand/applications', withCand(async (req, res, { cu }) => {
     k.status AS tstatus, k.token FROM applications a JOIN offers o ON o.id=a.offer_id JOIN companies c ON c.id=o.company_id
     LEFT JOIN candidates k ON k.id=a.candidate_id WHERE a.cu_id=? ORDER BY a.created_at DESC`, cu.id);
   send(res, 200, { applications: rows.map(r => ({ id: r.id, offerId: r.offer_id, title: r.title, company: r.company, city: r.city || '', contract: r.contract || '',
-    companyLogo: r.logo_v ? `/api/logo/${r.company_id}?v=${r.logo_v}` : null, status: r.status, createdAt: r.created_at,
+    companyLogo: r.logo_v ? `/api/logo/${r.company_id}?v=${r.logo_v}` : null, status: r.status, stage: r.stage || 'nouvelle', createdAt: r.created_at,
     test: r.token ? { status: r.tstatus, link: `/t/${r.token}` } : null })) });
 }));
 
@@ -833,7 +835,7 @@ on('GET', '/api/rh/offers/:id', async (req, res, { user, params }) => {
     k.status AS tstatus, k.global, k.scores, k.secs, k.token FROM applications a JOIN cusers u ON u.id=a.cu_id LEFT JOIN candidates k ON k.id=a.candidate_id
     WHERE a.offer_id=? AND a.status!='attente' ORDER BY (k.global IS NULL), k.global DESC, a.created_at DESC`, o.id);
   send(res, 200, { offer: { ...offerOut(o), testId: o.test_id, autoTest: !!o.auto_test }, applications: apps.map(a => ({ id: a.id, name: a.name, email: a.email, phone: a.phone || '',
-    city: a.city || '', familyName: famName(a.family), headline: a.headline || '', message: a.message || '', status: a.status, createdAt: a.created_at,
+    city: a.city || '', familyName: famName(a.family), headline: a.headline || '', message: a.message || '', status: a.status, stage: a.stage || 'nouvelle', createdAt: a.created_at,
     photo: a.hasphoto ? `/api/rh/applications/${a.id}/photo` : null, cv: a.cv_name ? `/api/rh/applications/${a.id}/cv` : null,
     test: a.token ? { status: a.tstatus, global: a.global, scores: a.scores ? JSON.parse(a.scores) : null, secs: a.secs } : null })) });
 }, { auth: true });
@@ -858,14 +860,19 @@ on('POST', '/api/rh/applications/:id/invite', async (req, res, { user, params, b
 }, { auth: true });
 on('PUT', '/api/rh/applications/:id', async (req, res, { user, params, body }) => {
   const a = ownApp(user, params.id); if (!a) return fail(res, 404, 'Candidature introuvable.');
-  const st = { retenue: 'retenue', refusee: 'refusee', recue: 'recue' }[body.status]; if (!st) return fail(res, 400, 'Statut inconnu.');
-  run(`UPDATE applications SET status=? WHERE id=?`, st, a.id);
+  // Étapes du recrutement. Ancien vocabulaire accepté : retenue = présélection.
+  const st = { nouvelle: 'nouvelle', recue: 'nouvelle', preselection: 'preselection', retenue: 'preselection', entretien: 'entretien', embauche: 'embauche', refusee: 'refusee' }[body.stage || body.status];
+  if (!st) return fail(res, 400, 'Étape inconnue.');
+  run(`UPDATE applications SET stage=? WHERE id=?`, st, a.id);
+  if (body.status === 'retenue' || body.status === 'refusee') run(`UPDATE applications SET status=? WHERE id=?`, body.status, a.id);
   const cu = q1(`SELECT * FROM cusers WHERE id=?`, a.cu_id), co = q1(`SELECT name FROM companies WHERE id=?`, a.company_id);
-  if (st !== 'recue' && body.notify !== false) {
-    const txt = st === 'retenue' ? `Bonne nouvelle : votre candidature au poste <b>${esc(a.title)}</b> a été retenue par ${esc(co.name)}. L’entreprise va vous contacter pour la suite.`
-      : `Merci pour l’intérêt porté au poste <b>${esc(a.title)}</b>. ${esc(co.name)} a choisi de ne pas donner suite à votre candidature. Nous vous souhaitons pleine réussite dans vos recherches.`;
-    sendMail({ to: cu.email, companyId: a.company_id, subject: `${co.name} : réponse à votre candidature (${a.title})`, html: mailLayout('Réponse à votre candidature', `<p>Bonjour ${esc(cu.name)},</p><p>${txt}</p>`, a.company_id) });
-    pushTo(cu.id, { title: `Réponse : ${a.title}`, body: st === 'retenue' ? 'Votre candidature a été retenue.' : 'Votre candidature n’a pas été retenue.', url: '/espace#/candidatures' });
+  const MSG = {
+    entretien: ['Invitation à un entretien', `Bonne nouvelle : ${esc(co.name)} souhaite vous rencontrer en entretien pour le poste <b>${esc(a.title)}</b>. L’entreprise va vous contacter pour fixer la date.`, 'Vous êtes invité à un entretien.'],
+    embauche: ['Votre candidature est retenue', `Félicitations : ${esc(co.name)} a retenu votre candidature au poste <b>${esc(a.title)}</b>. L’entreprise va vous contacter pour la suite.`, 'Votre candidature est retenue.'],
+    refusee: ['Réponse à votre candidature', `Merci pour l’intérêt porté au poste <b>${esc(a.title)}</b>. ${esc(co.name)} a choisi de ne pas donner suite à votre candidature. Nous vous souhaitons pleine réussite dans vos recherches.`, 'Votre candidature n’a pas été retenue.'] };
+  if (MSG[st] && body.notify !== false && cu) {
+    sendMail({ to: cu.email, companyId: a.company_id, subject: `${co.name} : ${MSG[st][0].toLowerCase()} (${a.title})`, html: mailLayout(MSG[st][0], `<p>Bonjour ${esc(cu.name)},</p><p>${MSG[st][1]}</p>`, a.company_id) });
+    pushTo(cu.id, { title: `${a.title}`, body: MSG[st][2], url: '/espace#/candidatures' });
   }
   send(res, 200, { ok: true });
 }, { auth: true });
@@ -884,13 +891,54 @@ on('GET', '/api/rh/dashboard', async (req, res, { user }) => {
     done: q1(`SELECT COUNT(*) n FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.status='termine'`, cid).n,
     avg: q1(`SELECT ROUND(AVG(c.global)) a FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.status='termine'`, cid).a
   };
-  const latest = qa(`SELECT a.id, a.status, a.created_at, a.offer_id, o.title, u.name, u.photo IS NOT NULL AS hasphoto, k.global, k.status AS tstatus
+  const latest = qa(`SELECT a.id, a.status, a.stage, a.created_at, a.offer_id, o.title, u.name, u.photo IS NOT NULL AS hasphoto, k.global, k.status AS tstatus
     FROM applications a JOIN offers o ON o.id=a.offer_id JOIN cusers u ON u.id=a.cu_id LEFT JOIN candidates k ON k.id=a.candidate_id
-    WHERE o.company_id=? AND a.status!='attente' ORDER BY a.created_at DESC LIMIT 6`, cid).map(a => ({ id: a.id, offerId: a.offer_id, title: a.title, name: a.name, status: a.status, createdAt: a.created_at,
+    WHERE o.company_id=? AND a.status!='attente' ORDER BY a.created_at DESC LIMIT 6`, cid).map(a => ({ id: a.id, offerId: a.offer_id, title: a.title, name: a.name, status: a.status, stage: a.stage || 'nouvelle', createdAt: a.created_at,
       photo: a.hasphoto ? `/api/rh/applications/${a.id}/photo` : null, score: a.tstatus === 'termine' ? a.global : null }));
   const results = qa(`SELECT c.id, c.name, c.global, c.ended_at, c.test_id, t.title FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.status='termine' ORDER BY c.ended_at DESC LIMIT 5`, cid);
   send(res, 200, { k, latest, results });
 }, { auth: true });
+
+/* équipe : plusieurs recruteurs par entreprise */
+on('GET', '/api/team', async (req, res, { user }) => {
+  const members = qa(`SELECT id,name,email,role,created_at FROM users WHERE company_id=? ORDER BY id`, user.company_id).map(m => ({ id: m.id, name: m.name, email: m.email, role: m.role, createdAt: m.created_at, me: m.id === user.id }));
+  const pending = qa(`SELECT name,email,expires FROM team_invites WHERE company_id=? AND expires>? ORDER BY expires DESC`, user.company_id, now());
+  send(res, 200, { members, pending, canManage: user.role !== 'recruteur' });
+}, { auth: true });
+on('POST', '/api/team/invite', async (req, res, { user, body }) => {
+  if (user.role === 'recruteur') return fail(res, 403, 'Seul l’administrateur du compte peut inviter des collègues.');
+  if (!canReach(user)) return fail(res, 403, reachMsg(user));
+  const name = clean(body.name, 120), email = clean(body.email, 200).toLowerCase();
+  if (!name) return fail(res, 400, 'Indiquez le nom de votre collègue.');
+  if (!isEmail(email)) return fail(res, 400, 'Adresse e-mail invalide.');
+  if (q1(`SELECT id FROM users WHERE email=?`, email)) return fail(res, 409, 'Cette adresse a déjà un compte recruteur sur Genius Recrutement.');
+  if (q1(`SELECT COUNT(*) n FROM users WHERE company_id=?`, user.company_id).n >= 10) return fail(res, 400, 'Votre compte compte déjà 10 recruteurs.');
+  run(`DELETE FROM team_invites WHERE company_id=? AND email=?`, user.company_id, email);
+  const tok = rnd(32); run(`INSERT INTO team_invites(token,company_id,name,email,by_user,expires) VALUES(?,?,?,?,?,?)`, sha(tok), user.company_id, name, email, user.id, now() + 7 * 864e5);
+  const r = await sendMail({ to: email, companyId: user.company_id, replyTo: user.email, subject: `${user.name} vous invite à rejoindre ${user.company} sur Genius Recrutement`, html: mailLayout('Rejoignez l’équipe de recrutement',
+    `<p>Bonjour ${esc(name)},</p><p>${esc(user.name)} vous invite à rejoindre l’espace de recrutement de <b>${esc(user.company)}</b> : offres, candidatures et résultats des tests, partagés avec toute l’équipe.</p>${button(`${BASE_URL}/app#/rejoindre/${tok}`, 'Créer mon accès')}<p style="font-size:13px;color:#4A5565">Ce lien est valable 7 jours.</p>`, user.company_id) });
+  send(res, 200, { ok: true, sent: !!r.sent, link: r.sent ? null : `${BASE_URL}/app#/rejoindre/${tok}` });
+}, { auth: true });
+on('DELETE', '/api/team/:id', async (req, res, { user, params }) => {
+  if (user.role === 'recruteur') return fail(res, 403, 'Seul l’administrateur du compte peut retirer un collègue.');
+  const m = q1(`SELECT * FROM users WHERE id=? AND company_id=?`, +params.id, user.company_id); if (!m) return fail(res, 404, 'Collègue introuvable.');
+  if (m.id === user.id) return fail(res, 400, 'Vous ne pouvez pas retirer votre propre accès.');
+  run(`DELETE FROM users WHERE id=?`, m.id); send(res, 200, { ok: true });
+}, { auth: true });
+on('GET', '/api/team/join/:token', async (req, res, { params }) => {
+  const i = q1(`SELECT i.*, c.name AS company FROM team_invites i JOIN companies c ON c.id=i.company_id WHERE i.token=? AND i.expires>?`, sha(params.token), now());
+  if (!i) return fail(res, 404, 'Ce lien d’invitation n’est plus valable. Demandez à votre collègue de vous inviter à nouveau.');
+  send(res, 200, { name: i.name, email: i.email, company: i.company });
+});
+on('POST', '/api/team/join', async (req, res, { body }) => {
+  const i = q1(`SELECT * FROM team_invites WHERE token=? AND expires>?`, sha(String(body.token || '')), now());
+  if (!i) return fail(res, 404, 'Ce lien d’invitation n’est plus valable.');
+  const pass = String(body.password || ''); if (pass.length < 8) return fail(res, 400, 'Le mot de passe doit faire au moins 8 caractères.');
+  if (q1(`SELECT id FROM users WHERE email=?`, i.email)) return fail(res, 409, 'Un compte existe déjà avec cette adresse. Connectez-vous.');
+  const uid = run(`INSERT INTO users(company_id,name,email,pass,created_at,verified,role) VALUES(?,?,?,?,?,1,'recruteur')`, i.company_id, clean(body.name, 120) || i.name, i.email, hashPass(pass), now()).lastInsertRowid;
+  run(`DELETE FROM team_invites WHERE token=?`, i.token);
+  setSession(res, uid); send(res, 200, { user: userOut(currentUserById(uid)) });
+});
 
 /* vérification des adresses e-mail */
 function consumeVerify(tok) {
