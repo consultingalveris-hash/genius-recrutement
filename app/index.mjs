@@ -692,9 +692,34 @@ on('POST', '/api/cand/push', withCand(async (req, res, { cu, body }) => {
 
 /* offres : lecture publique */
 const offerStatus = o => o.status !== 'ouverte' ? 'fermee' : (o.closes_at && now() > new Date(o.closes_at + 'T23:59:59').getTime() ? 'fermee' : 'ouverte');
-const offerOut = (o, extra = {}) => ({ id: o.id, title: o.title, family: o.family, familyName: famName(o.family), city: o.city || '', contract: o.contract || '',
+const offerOut = (o, extra = {}) => ({ url: `${BASE_URL}/offre/${o.id}-${String(o.title).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)}`, id: o.id, title: o.title, family: o.family, familyName: famName(o.family), city: o.city || '', contract: o.contract || '',
   description: o.description, createdAt: o.created_at, closesAt: o.closes_at || '', status: offerStatus(o), company: o.company, companyLogo: o.logo_v ? `/api/logo/${o.company_id}?v=${o.logo_v}` : null,
   hasTest: !!o.test_id, ...extra });
+
+/* page publique d'une offre, partageable (WhatsApp, LinkedIn, Facebook) avec aperçu */
+const slug = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+const offerUrl = o => `${BASE_URL}/offre/${o.id}-${slug(o.title)}`;
+function offerPage(o) {
+  const st = offerStatus(o), where = [o.company, o.city, o.contract].filter(Boolean).join(' · ');
+  const img = o.logo_v ? `${BASE_URL}/api/logo/${o.company_id}?v=${o.logo_v}` : `${BASE_URL}/img/icone-512.png`;
+  const desc = o.description.replace(/\s+/g, ' ').slice(0, 190) + (o.description.length > 190 ? '…' : '');
+  const title = `${o.title} — ${o.company}${o.city ? ', ' + o.city : ''}`;
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(title)} | Genius Recrutement</title><meta name="description" content="${esc(desc)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Genius Recrutement"><meta property="og:url" content="${esc(offerUrl(o))}">
+<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc((o.contract ? o.contract + ' · ' : '') + desc)}"><meta property="og:image" content="${esc(img)}">
+<meta name="twitter:card" content="summary"><link rel="canonical" href="${esc(offerUrl(o))}"><link rel="icon" href="/img/icone-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"><link rel="stylesheet" href="/style.css">
+<style>.pg{max-width:780px;margin:auto;padding:28px 16px 64px}.hd{display:flex;gap:16px;align-items:center}.lg{width:72px;height:72px;border:1px solid var(--line);border-radius:12px;background:#fff;display:grid;place-items:center;overflow:hidden;flex:none}.lg img{max-width:64px;max-height:64px}.desc{white-space:pre-wrap;color:var(--fg-2);line-height:1.6}</style></head>
+<body><header class="top"><div class="top-in"><a class="brand" href="/espace"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg></span>Genius Recrutement</a></div></header>
+<main class="pg"><div class="card col"><div class="hd"><div class="lg">${o.logo_v ? `<img src="/api/logo/${o.company_id}?v=${o.logo_v}" alt="Logo ${esc(o.company)}">` : `<b>${esc(o.company.slice(0, 2).toUpperCase())}</b>`}</div>
+<div><h1 style="font-size:26px">${esc(o.title)}</h1><p class="muted">${esc(where)}</p></div></div>
+<p class="small muted">${esc(famName(o.family))} · publiée le ${new Date(o.created_at).toLocaleDateString('fr-FR')}${o.closes_at ? ` · candidatures jusqu’au ${new Date(o.closes_at + 'T12:00').toLocaleDateString('fr-FR')}` : ''}</p>
+<div class="desc">${esc(o.description)}</div>
+${o.test_id ? '<p class="note info">Cette entreprise utilise un test en ligne : vous le recevrez dès votre candidature, à passer sur téléphone ou ordinateur.</p>' : ''}
+${st === 'ouverte' ? `<div class="row"><a class="btn primary" href="/espace#/offre/${o.id}">Postuler</a><a class="btn" href="/espace#/offres">Voir les autres offres</a></div>` : '<p class="note warn">Cette offre est fermée.</p><div><a class="btn" href="/espace#/offres">Voir les offres ouvertes</a></div>'}
+</div><p class="small muted" style="margin-top:16px;text-align:center">Offre publiée sur Genius Recrutement · <a href="/confidentialite.html">Confidentialité</a></p></main></body></html>`;
+}
 on('GET', '/api/offers', async (req, res, { query }) => {
   const fam = query.get('family'), q = (query.get('q') || '').toLowerCase().trim();
   let rows = qa(`SELECT o.*, c.name AS company, c.logo_v FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.status='ouverte' AND c.status='valide' ORDER BY o.created_at DESC LIMIT 300`)
@@ -1012,6 +1037,11 @@ const server = http.createServer(async (req, res) => {
     if (p === '/' || p === '/index.html') return serveFile(res, path.join(PUB, 'index.html'));
     if (p === '/app' || p === '/app/') return serveFile(res, path.join(PUB, 'app.html'));
     if (/^\/t\/[\w-]+$/.test(p)) return serveFile(res, path.join(PUB, 'test.html'), { 'X-Robots-Tag': 'noindex' });
+    if (/^\/offre\/\d+(-[a-z0-9-]*)?$/.test(p)) {
+      const o = q1(`SELECT o.*, c.name AS company, c.logo_v FROM offers o JOIN companies c ON c.id=o.company_id WHERE o.id=? AND c.status='valide'`, +p.split('/')[2].split('-')[0]);
+      if (!o) { res.writeHead(302, { Location: '/espace#/offres' }); return res.end(); }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }); return res.end(offerPage(o));
+    }
     if (/^\/verifier\/[\w-]+$/.test(p)) {
       const kind = consumeVerify(p.split('/').pop());
       res.writeHead(302, { Location: kind === 'user' ? '/app#/accueil/verifie' : kind === 'cand' ? '/espace#/offres/verifie' : '/?lien=expire' }); return res.end();

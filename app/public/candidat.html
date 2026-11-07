@@ -85,11 +85,13 @@ V.offre=function(id){
     app.innerHTML='<div class="wrap" style="max-width:820px"><a href="#/offres" class="small">← Toutes les offres</a><div class="card col" style="margin-top:12px">'+
     '<div class="offer">'+coLogo(o)+'<div><h1 style="font-size:26px">'+esc(o.title)+'</h1><p class="muted">'+esc(o.company)+(o.city?' · '+esc(o.city):'')+'</p><div class="tags">'+(o.contract?'<span class="pill neutral">'+esc(o.contract)+'</span>':'')+'<span class="pill info">'+esc(o.familyName)+'</span>'+(o.closesAt?'<span class="pill warn">Jusqu’au '+new Date(o.closesAt+'T12:00').toLocaleDateString('fr-FR')+'</span>':'')+'</div></div></div>'+
     '<div class="desc">'+esc(o.description)+'</div>'+
+    '<div><button class="btn sm" id="shr" type="button">Partager cette offre</button></div>'+
     (o.hasTest?'<p class="note info">Cette entreprise utilise un test en ligne. Vous le recevrez dès votre candidature : prévoyez un moment au calme.</p>':'')+
     (o.status!=='ouverte'?'<p class="note warn">Cette offre est fermée.</p>':o.applied?'<p class="note ok">Vous avez déjà postulé. Suivez votre candidature dans <a href="#/candidatures">Mes candidatures</a>.</p>':
       ME?'<button class="btn primary" id="apply" style="align-self:flex-start">Postuler en un clic</button>':'<div class="row"><a class="btn primary" href="#/signup">Créer mon compte pour postuler</a><a class="btn" href="#/login">J’ai déjà un compte</a></div>')+'</div></div>';
     if(!ME)try{sessionStorage.setItem('gr-after','#/offre/'+o.id);}catch(e){}
     var b=$('#apply');if(b)b.addEventListener('click',function(){applyModal(o);});
+    $('#shr').addEventListener('click',function(){if(navigator.share)navigator.share({title:o.title,text:o.title+' – '+o.company,url:o.url}).catch(function(){});else{(navigator.clipboard?navigator.clipboard.writeText(o.url):Promise.reject()).then(function(){toast('Lien copié : collez-le dans WhatsApp ou ailleurs.');}).catch(function(){prompt('Copiez ce lien :',o.url);});}});
   }).catch(function(e){app.innerHTML='<div class="wrap"><div class="card empty">'+esc(e.message)+'<br><br><a class="btn" href="#/offres">Voir les offres</a></div></div>';});
 };
 function applyModal(o){
