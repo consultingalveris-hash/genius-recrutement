@@ -25,7 +25,7 @@
 .ocard{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;text-decoration:none;color:inherit;transition:box-shadow .2s,transform .2s}
 .ocard:hover{box-shadow:0 12px 30px var(--shadow);transform:translateY(-2px)}
 .ocard:focus-visible{outline:3px solid #0E7C86;outline-offset:2px}
-.ovis{position:relative;height:170px;display:grid;place-items:center;color:#fff}
+.ovis{position:relative;height:170px;background-color:#0B3640;background-size:cover;background-position:center;color:#fff}
 .ovis .fam{opacity:.9}
 .ovis .co{position:absolute;left:12px;top:12px;width:48px;height:48px;border-radius:10px;background:#fff;display:grid;place-items:center;overflow:hidden;font-weight:800;color:#0E7C86;font-size:15px}
 .ovis .co img{max-width:44px;max-height:44px;object-fit:contain}
@@ -81,12 +81,12 @@ var V={};
 
 /* ---------- offres ---------- */
 var F={q:'',family:''};
-var FAMC=['#0E7C86','#0B3640','#2F5D8A','#9A6A12','#1D5560','#6B3F7A'];
-function famBg(k){var i=Math.max(0,FAM.findIndex(function(f){return f.k===k;}));var c=FAMC[i%FAMC.length];return 'background:linear-gradient(140deg,'+c+' 0%,#0B3640 100%)';}
+var FAMIMG={cc:1,vente:1,compta:1,rh:1,admin:1};
+function famBg(k){return 'background-image:linear-gradient(180deg,rgba(11,54,64,.05) 40%,rgba(11,54,64,.55) 100%),url(/img/metiers/'+(FAMIMG[k]?k:'autre')+'.jpg)';}
 function offerCard(o){var d=o.description||'';
   return '<a class="ocard" href="#/offre/'+o.id+'"><div class="ovis" style="'+famBg(o.family)+'">'+
     '<span class="co">'+(o.companyLogo?'<img src="'+esc(o.companyLogo)+'" alt="">':esc(initials(o.company)))+'</span>'+
-    '<span class="fam">'+GR.famIcon(o.family,64)+'</span><span class="see">Voir le détail</span>'+
+    '<span class="see">Voir le détail</span>'+
     (o.applied?'<span class="badge ok">Déjà postulé</span>':o.hasTest?'<span class="badge">Test en ligne</span>':'')+'</div>'+
     '<div class="obody"><h3>'+esc(o.title)+'</h3><p class="co-name">'+esc(o.company)+(o.city?' · '+esc(o.city):'')+'</p>'+
     '<p class="sum">'+esc(d)+'</p><p class="meta">'+esc([o.contract,o.familyName].filter(Boolean).join(' · '))+'</p>'+
