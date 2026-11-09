@@ -54,10 +54,25 @@ function chrome(active){
   $('#nav').innerHTML=items.map(function(i){return '<a href="'+i[0]+'" class="'+(active===i[2]?'on':'')+'">'+i[1]+'</a>';}).join('');
 }
 /* bandeau d'état du compte : adresse à confirmer, entreprise en cours de vérification */
+function daysLeft(t){return Math.max(0,Math.ceil((t-Date.now())/864e5));}
+var PLANS_UI=[['decouverte','Découverte','Gratuit',['2 offres ouvertes','20 candidats testés par mois','1 recruteur']],['essentiel','Essentiel','25 000 F HT / mois',['5 offres ouvertes','100 candidats testés par mois','3 recruteurs, votre logo']],['pro','Pro','60 000 F HT / mois',['Offres illimitées','500 candidats testés par mois','10 recruteurs, assistance prioritaire']]];
+function planCard(pl,ni){
+  var u=pl.usage,l=pl.limits;
+  function bar(lbl,v,max){var pc=max?Math.min(100,Math.round(v/max*100)):0;return '<div class="col" style="gap:6px"><div class="row between small"><span>'+lbl+'</span><b>'+v+(max?' / '+max:'')+(max?'':' <span class="muted" style="font-weight:400">(illimité)</span>')+'</b></div>'+(max?'<div class="meter" style="width:100%;margin:0"><i style="width:'+pc+'%;'+(pc>=100?'background:var(--danger)':'')+'"></i></div>':'')+'</div>';}
+  var head=pl.trial?'<p class="note info" style="margin:0"><b>Essai gratuit jusqu’au '+new Date(pl.trialUntil).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})+'</b> ('+daysLeft(pl.trialUntil)+' jours) : toutes les fonctions sont ouvertes. Ensuite, votre compte passera à la formule '+esc(pl.baseName)+'. Rien ne sera supprimé.</p>'
+    :'<p class="note '+(pl.key==='decouverte'?'warn':'ok')+'" style="margin:0">Votre formule : <b>'+esc(pl.name)+'</b>.</p>';
+  return '<div class="card col"><div><h2>Votre formule</h2></div>'+head+
+    '<div class="col" style="gap:14px">'+bar('Offres ouvertes',u.offers,l.offers)+bar('Candidats testés ce mois-ci',u.tests,l.tests)+bar('Accès recruteurs',u.users,l.users)+
+    '<div class="row between small"><span>Logo de l’entreprise</span><b>'+(l.logo?'Inclus':'Formules Essentiel et Pro')+'</b></div></div>'+
+    '<div class="grid3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">'+PLANS_UI.map(function(p){var cur=(pl.trial?pl.base:pl.key)===p[0];return '<div style="border:1px solid '+(cur?'#0E7C86':'var(--line)')+';border-radius:12px;padding:14px;'+(cur?'background:var(--accent-soft)':'')+'"><b>'+p[1]+'</b>'+(cur?' <span class="pill info">'+(pl.trial?'après l’essai':'actuelle')+'</span>':'')+'<div style="font-weight:800;margin:6px 0">'+p[2]+'</div><ul class="small" style="margin:0;padding-left:18px">'+p[3].map(function(x){return '<li>'+x+'</li>';}).join('')+'</ul></div>';}).join('')+'</div>'+
+    '<p class="small muted">Pour changer de formule : écrivez à <a href="mailto:consultingalveris@gmail.com">consultingalveris@gmail.com</a> ou appelez le (+221) 76 595 67 65. Paiement par Wave, Orange Money ou virement. Paiement annuel : 12 mois pour le prix de 10.</p></div>';
+}
 function notice(){var n=$('#notice'),m='';
   if(ME.superadmin){n.innerHTML='';return;}
   if(!ME.verified)m='<b>Confirmez votre adresse e-mail.</b> Un lien vous a été envoyé à '+esc(ME.email)+' (pensez aux courriers indésirables). Tant que l’adresse n’est pas confirmée, vos tests et vos offres restent en préparation : rien n’est envoyé aux candidats. <button class="btn sm" id="rv" type="button">Renvoyer l’e-mail</button>';
   else if(ME.companyStatus==='en_attente')m='<b>Votre entreprise est en cours de vérification</b> par l’équipe Genius Recrutement, en général sous 24 heures ouvrées. Vous pouvez déjà préparer vos tests et vos offres : elles deviendront visibles et les candidats seront prévenus dès la validation.';
+  else if(ME.needsInfo&&ME.role!=='recruteur')m='<b>Complétez les informations de votre entreprise</b> : NINEA et téléphone. <a href="#/account">Les ajouter dans Mon compte</a>.';
+  else if(ME.plan&&ME.plan.trial&&daysLeft(ME.plan.trialUntil)<=14)m='<b>Votre essai gratuit se termine dans '+daysLeft(ME.plan.trialUntil)+' jour'+(daysLeft(ME.plan.trialUntil)>1?'s':'')+'.</b> Ensuite, votre compte passera à la formule Découverte (gratuite, avec des limites). <a href="#/account">Voir les formules</a>.';
   else if(ME.companyStatus==='suspendue')m='<b>Le compte de votre entreprise est suspendu.</b> Vos offres ne sont plus visibles. Écrivez à <a href="mailto:consultingalveris@gmail.com">consultingalveris@gmail.com</a>.';
   n.innerHTML=m?'<div class="wrap" style="padding-bottom:0"><p class="note '+(ME.companyStatus==='suspendue'?'warn':'info')+'" style="margin:0">'+m+'</p></div>':'';
   var b=$('#rv');if(b)b.addEventListener('click',function(){busy(b,true);api('POST','/api/verify/resend',{}).then(function(r){toast(r.already?'Adresse déjà confirmée.':r.sent?'E-mail renvoyé à '+ME.email+'.':'L’envoi a échoué. Réessayez dans quelques minutes.');}).catch(handle).then(function(){busy(b,false);});});
@@ -83,8 +98,9 @@ V.login=function(){
   bindForm('#f',function(d){return api('POST','/api/login',d).then(function(r){ME=r.user;location.hash='#/accueil';});});
 };
 V.signup=function(){
-  authPage('Espace RH — créer un compte','Un compte par entreprise, pour les recruteurs. Gratuit pendant la phase de test.',
+  authPage('Espace RH — créer un compte','Un compte par entreprise, pour les recruteurs. 2 mois d’essai gratuit, avec toutes les fonctions.',
   '<form class="form" id="f"><label class="field">Nom de l’entreprise<input class="in" name="company" required maxlength="120" autocomplete="organization"></label>'+
+  '<div class="two"><label class="field">NINEA <span class="hint">Ou numéro d’immatriculation hors Sénégal</span><input class="in" name="ninea" required maxlength="40"></label><label class="field">Téléphone<input class="in" name="phone" type="tel" required maxlength="30" autocomplete="tel" placeholder="77 000 00 00"></label></div>'+
   '<label class="field">Votre nom<input class="in" name="name" required maxlength="120" autocomplete="name"></label>'+
   '<label class="field">Adresse e-mail<input class="in" name="email" type="email" required autocomplete="email"></label>'+
   '<label class="field">Mot de passe <span class="hint">8 caractères au moins</span><input class="in" name="password" type="password" minlength="8" required autocomplete="new-password"></label>'+
@@ -221,6 +237,7 @@ function inviteModal(t){
     var bad=list.filter(function(x){return !x.email;});if(bad.length)throw new Error('Adresse e-mail manquante sur la ligne : '+bad[0].name);
     return api('POST','/api/tests/'+t.id+'/invite',{candidates:list,send:d.send}).then(function(r){
       var msg='<h2>'+r.added+' candidat'+(r.added>1?'s':'')+' ajouté'+(r.added>1?'s':'')+'</h2><div class="col" style="margin:14px 0">';
+      if(r.limit)msg+='<p class="note warn">'+esc(r.limit)+'</p>';
       if(r.blocked)msg+='<p class="note info">Aucun e-mail envoyé : '+esc(r.blocked)+' En attendant, vous pouvez copier le lien de chaque candidat.</p>';
       if(r.sent)msg+='<p class="note ok">'+r.sent+' e-mail'+(r.sent>1?'s':'')+' d’invitation envoyé'+(r.sent>1?'s':'')+'.</p>';
       if(r.test)msg+='<p class="note warn">Les e-mails ne sont pas encore activés sur la plateforme : '+r.test+' invitation'+(r.test>1?'s n’ont':' n’a')+' pas pu partir. Utilisez le bouton « Copier le lien » à côté de chaque candidat et envoyez-le vous-même (WhatsApp, e-mail…).</p>';
@@ -268,6 +285,8 @@ V.account=function(){
   chrome('account');
   app.innerHTML='<div class="wrap col" style="max-width:760px"><h1>Mon compte</h1>'+
   '<div class="card col"><h2>Mes informations</h2><p>'+esc(ME.name)+'<br><span class="muted">'+esc(ME.email)+' · '+esc(ME.company)+'</span></p></div>'+
+  '<div id="planbox"></div>'+
+  (ME.role!=='recruteur'?'<form class="card form" id="fi"><div><h2>Entreprise</h2><p class="muted" style="margin-top:4px">Ces informations permettent de vérifier votre entreprise. Elles ne sont pas visibles par les candidats.</p></div><div class="two"><label class="field">NINEA <span class="hint">Ou numéro d’immatriculation hors Sénégal</span><input class="in" name="ninea" required maxlength="40" id="i_ninea"></label><label class="field">Téléphone<input class="in" name="phone" type="tel" required maxlength="30" id="i_phone"></label></div><p class="err" hidden></p><div><button class="btn primary" type="submit">Enregistrer</button></div></form>':'')+
   '<div class="card col" id="logobox"><div><h2>Logo de l’entreprise</h2><p class="muted" style="margin-top:4px">Il s’affiche en haut de votre espace, sur la page du test vue par le candidat et dans les e-mails d’invitation. Format PNG ou JPEG ; il est réduit automatiquement.</p></div>'+
   '<div class="row"><div id="logoprev" style="width:180px;height:80px;border:1px dashed var(--line);border-radius:10px;display:grid;place-items:center;background:#fff;overflow:hidden">'+(ME.logo?'<img src="'+esc(ME.logo)+'" alt="Logo actuel" style="max-width:160px;max-height:64px">':'<span class="small" style="color:#4A5565">Aucun logo</span>')+'</div>'+
   '<div class="col" style="gap:8px"><label class="btn primary" style="cursor:pointer">Choisir une image<input type="file" id="logofile" accept="image/png,image/jpeg,image/webp" hidden></label>'+(ME.logo?'<button class="link" id="logodel" style="color:var(--danger)">Retirer le logo</button>':'')+'</div></div></div>'+
@@ -276,6 +295,10 @@ V.account=function(){
   '<div class="card col" id="team"><p class="muted">Chargement de l’équipe…</p></div>'+
   (ME.superadmin?'<div id="mailcfg" class="card"><p class="muted">Chargement des réglages e-mail…</p></div>':'')+'</div>';
   bindForm('#fp',function(d,f){return api('POST','/api/password',d).then(function(){f.reset();toast('Mot de passe changé.');});});
+  if($('#fi'))bindForm('#fi',function(d){return api('PUT','/api/company/info',d).then(function(){ME.needsInfo=false;notice();toast('Informations enregistrées.');});});
+  api('GET','/api/company/plan').then(function(r){ME.plan=r.plan;$('#planbox').innerHTML=planCard(r.plan);if($('#i_ninea')){$('#i_ninea').value=r.ninea;$('#i_phone').value=r.phone;}
+    if(!r.plan.limits.logo){var lb=$('#logobox');if(lb)lb.insertAdjacentHTML('beforeend','<p class="note warn" style="margin:0">Le logo est inclus dans les formules Essentiel et Pro.'+(ME.logo?'':' Il n’est pas affiché avec votre formule actuelle.')+'</p>');var lf=$('#logofile');if(lf){lf.disabled=true;lf.parentNode.classList.add('disabled');lf.parentNode.style.opacity='.5';lf.parentNode.style.cursor='not-allowed';}}
+  }).catch(function(){});
   loadTeam();
   $('#logofile').addEventListener('change',function(){
     var f=this.files[0];if(!f)return;
@@ -510,9 +533,13 @@ V.admin=function(){
     var ST={en_attente:['À vérifier','warn'],valide:['Validée','ok'],suspendue:['Suspendue','neutral']};
     app.innerHTML='<div class="wrap col"><div><h1>Administration</h1><p class="muted" style="margin-top:4px">Vérifiez chaque nouvelle entreprise avant que ses offres ne deviennent visibles : nom réel, adresse e-mail professionnelle, activité cohérente.</p></div>'+
     '<div class="kpis"><div class="kpi accent"><span class="small">Entreprises à vérifier</span><b>'+s.pending+'</b></div><div class="kpi"><span class="small muted">Entreprises</span><b>'+s.companies+'</b></div><div class="kpi"><span class="small muted">Candidats inscrits</span><b>'+s.candidates+'</b></div><div class="kpi"><span class="small muted">Offres ouvertes</span><b>'+s.offers+'</b><span class="small muted">'+s.applications+' candidature'+(s.applications>1?'s':'')+'</span></div></div>'+
-    '<div class="card tight"><div class="table-wrap"><table><thead><tr><th>Entreprise</th><th>Responsable</th><th>Inscription</th><th class="num">Tests</th><th class="num">Offres</th><th>État</th><th></th></tr></thead><tbody>'+
+    '<div class="card tight"><div class="table-wrap"><table><thead><tr><th>Entreprise</th><th>Responsable</th><th>Inscription</th><th>Formule</th><th class="num">Offres</th><th>État</th><th></th></tr></thead><tbody>'+
     r.companies.map(function(c){var st=ST[c.status]||[c.status,'neutral'];
-      return '<tr><td><b>'+esc(c.name)+'</b></td><td>'+esc(c.user||'–')+'<div class="small muted">'+esc(c.email||'')+(c.email&&!c.verified?' · adresse non confirmée':'')+'</div></td><td>'+fmtDate(c.createdAt)+'</td><td class="num">'+c.tests+'</td><td class="num">'+c.offers+'</td><td><span class="pill '+st[1]+'">'+st[0]+'</span></td><td style="text-align:right;white-space:nowrap">'+
+      var trial=c.trialUntil&&c.trialUntil>Date.now(),td=c.trialUntil?new Date(c.trialUntil).toISOString().slice(0,10):'';
+      var simi=c.similar.length?'<div class="small" style="color:var(--danger);margin-top:4px"><b>Ressemble à :</b> '+c.similar.map(function(x){return esc(x.name)+' ('+esc(x.why)+(x.trialUntil?', essai '+(x.trialUntil>Date.now()?'jusqu’au ':'terminé le ')+fmtDate(x.trialUntil):'')+')';}).join(' · ')+'</div>':'';
+      return '<tr><td><b>'+esc(c.name)+'</b><div class="small muted">NINEA '+esc(c.ninea||'–')+' · tél. '+esc(c.phone||'–')+'</div>'+simi+'</td><td>'+esc(c.user||'–')+'<div class="small muted">'+esc(c.email||'')+(c.email&&!c.verified?' · adresse non confirmée':'')+'</div></td><td>'+fmtDate(c.createdAt)+'</td>'+
+        '<td><select class="in" data-plan="'+c.id+'" style="width:auto;padding:4px 8px">'+[['decouverte','Découverte'],['essentiel','Essentiel'],['pro','Pro']].map(function(o){return '<option value="'+o[0]+'"'+(c.plan===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
+        '<div class="small muted" style="margin-top:6px">Essai jusqu’au <input type="date" class="in" data-trial="'+c.id+'" value="'+td+'" style="width:auto;padding:2px 6px"></div>'+(trial?'<span class="pill info" style="margin-top:4px">En essai</span>':'')+'</td><td class="num">'+c.offers+'</td><td><span class="pill '+st[1]+'">'+st[0]+'</span></td><td style="text-align:right;white-space:nowrap">'+
         (c.status!=='valide'?'<button class="btn sm primary" data-st="valide" data-id="'+c.id+'">Valider</button> ':'')+(c.status!=='suspendue'&&c.email!==ME.email?'<button class="btn sm" data-st="suspendue" data-id="'+c.id+'">Suspendre</button>':'')+'</td></tr>';}).join('')+
     '</tbody></table></div></div>'+
     '<div class="card tight"><div style="padding:14px 16px;border-bottom:1px solid var(--line-soft)"><h2>Candidats inscrits</h2><p class="small muted" style="margin-top:4px">'+s.candidates+' inscrit'+(s.candidates>1?'s':'')+(s.unverified?', dont '+s.unverified+' qui n’'+(s.unverified>1?'ont':'a')+' pas encore confirmé leur adresse (ils ne peuvent pas postuler).':'.')+'</p></div><div class="table-wrap"><table><thead><tr><th>Candidat</th><th>Métier</th><th>Inscription</th><th>Adresse</th><th class="num">Candidatures</th><th></th></tr></thead><tbody>'+
@@ -523,6 +550,8 @@ V.admin=function(){
     '</tbody></table></div></div></div>';
     app.querySelectorAll('[data-rv],[data-cf]').forEach(function(b){b.addEventListener('click',function(){busy(b,true);
       api('POST','/api/admin/cand-verify',{email:b.dataset.rv||b.dataset.cf,confirm:!!b.dataset.cf}).then(function(x){toast(b.dataset.cf?'Adresse confirmée : ce candidat peut postuler.':x.sent?'Lien renvoyé.':'L’envoi a échoué.');route();}).catch(handle).then(function(){busy(b,false);});});});
+    app.querySelectorAll('[data-plan]').forEach(function(sel){sel.addEventListener('change',function(){api('PUT','/api/admin/companies/'+sel.dataset.plan,{plan:sel.value}).then(function(){toast('Formule enregistrée.');}).catch(handle);});});
+    app.querySelectorAll('[data-trial]').forEach(function(inp){inp.addEventListener('change',function(){api('PUT','/api/admin/companies/'+inp.dataset.trial,{trialUntil:inp.value}).then(function(){toast(inp.value?'Fin d’essai enregistrée.':'Essai terminé.');route();}).catch(handle);});});
     app.querySelectorAll('[data-st]').forEach(function(b){b.addEventListener('click',function(){
       busy(b,true);
       api('PUT','/api/admin/companies/'+b.dataset.id,{status:b.dataset.st}).then(function(x){toast(b.dataset.st==='valide'?'Entreprise validée'+(x.alerted?' : '+x.alerted+' candidat'+(x.alerted>1?'s':'')+' alerté'+(x.alerted>1?'s':''):'')+'.':'Entreprise suspendue : ses offres ne sont plus visibles.');route();}).catch(handle).then(function(){busy(b,false);});});});

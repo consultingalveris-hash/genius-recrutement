@@ -51,6 +51,12 @@ try { db.exec(`ALTER TABLE companies ADD COLUMN logo TEXT`); } catch {}
 try { db.exec(`ALTER TABLE companies ADD COLUMN logo_v INTEGER`); } catch {}
 for (const sql of [`ALTER TABLE tests ADD COLUMN level TEXT NOT NULL DEFAULT 'confirme'`, `ALTER TABLE tests ADD COLUMN family TEXT NOT NULL DEFAULT 'cc'`, `ALTER TABLE candidates ADD COLUMN perms TEXT`,
   `ALTER TABLE candidates ADD COLUMN qtime TEXT`, `ALTER TABLE candidates ADD COLUMN cur TEXT`, `ALTER TABLE candidates ADD COLUMN cur_since INTEGER`]) { try { db.exec(sql); } catch {} }
+for (const sql of [`ALTER TABLE companies ADD COLUMN plan TEXT NOT NULL DEFAULT 'decouverte'`, `ALTER TABLE companies ADD COLUMN trial_until INTEGER`, `ALTER TABLE companies ADD COLUMN ninea TEXT`,
+  `ALTER TABLE companies ADD COLUMN phone TEXT`, `ALTER TABLE companies ADD COLUMN trial_mail INTEGER NOT NULL DEFAULT 0`, `ALTER TABLE companies ADD COLUMN logo_hash TEXT`, `ALTER TABLE companies ADD COLUMN quota_mail TEXT`]) { try { db.exec(sql); } catch {} }
+// Le compte du propriétaire de la plateforme garde toutes les fonctions.
+if (process.env.SUPERADMIN_EMAIL) db.prepare(`UPDATE companies SET plan='pro' WHERE id IN (SELECT company_id FROM users WHERE email=?)`).run(process.env.SUPERADMIN_EMAIL.trim().toLowerCase());
+// Entreprises déjà inscrites avant les formules : 2 mois d'essai à partir de la mise en place.
+db.prepare(`UPDATE companies SET trial_until=? WHERE trial_until IS NULL`).run(Date.now() + 60 * 864e5);
 for (const sql of [`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'`, `ALTER TABLE companies ADD COLUMN status TEXT NOT NULL DEFAULT 'valide'`, `ALTER TABLE users ADD COLUMN verified INTEGER NOT NULL DEFAULT 1`]) { try { db.exec(sql); } catch {} }
 db.exec(`CREATE TABLE IF NOT EXISTS team_invites(token TEXT PRIMARY KEY, company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE, name TEXT NOT NULL, email TEXT NOT NULL, by_user INTEGER, expires INTEGER NOT NULL)`);
 db.exec(`CREATE TABLE IF NOT EXISTS verifs(token TEXT PRIMARY KEY, kind TEXT NOT NULL, ref_id INTEGER NOT NULL, expires INTEGER NOT NULL)`);
@@ -82,7 +88,7 @@ function getTransport() {
   }
   return { t: transport, from: m.from };
 }
-const logoUrl = companyId => { const r = q1(`SELECT logo_v FROM companies WHERE id=? AND logo IS NOT NULL`, companyId); return r ? `${BASE_URL}/api/logo/${companyId}?v=${r.logo_v}` : null; };
+const logoUrl = companyId => { const r = q1(`SELECT logo_v FROM companies WHERE id=? AND logo IS NOT NULL`, companyId); return r && showLogo(companyId) ? `${BASE_URL}/api/logo/${companyId}?v=${r.logo_v}` : null; };
 function mailLayout(title, inner, companyId = null) {
   const lg = companyId ? logoUrl(companyId) : null;
   return `<div style="font-family:Arial,Helvetica,sans-serif;background:#F4F6F8;padding:24px"><div style="max-width:560px;margin:auto;background:#fff;border:1px solid #DDE2E8;border-radius:12px;padding:28px;color:#0F1B2D;font-size:15px;line-height:1.5">
@@ -251,6 +257,24 @@ async function offsiteFiles() {
   run(`INSERT INTO settings(k,v) VALUES('offsite_files',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`, String(now()));
   run(`INSERT INTO settings(k,v) VALUES('offsite_files_since',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`, String(start));
 }
+// Fin d'essai : rappel 7 jours avant, puis avis de passage en Découverte (une seule fois chacun).
+async function trialMails() {
+  for (const c of qa(`SELECT * FROM companies WHERE status='valide' AND trial_until IS NOT NULL AND trial_mail<2`)) {
+    const u = q1(`SELECT * FROM users WHERE company_id=? ORDER BY id LIMIT 1`, c.id); if (!u || isSuper(u)) continue;
+    const end = new Date(c.trial_until).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Dakar' });
+    if (c.trial_mail === 0 && c.trial_until > now() && c.trial_until - now() < 7 * 864e5) {
+      run(`UPDATE companies SET trial_mail=1 WHERE id=?`, c.id);
+      await sendMail({ to: u.email, companyId: c.id, subject: `Votre essai Genius Recrutement se termine le ${end}`, html: mailLayout('Votre essai gratuit se termine bientôt',
+        `<p>Bonjour ${esc(u.name)},</p><p>Votre essai gratuit de Genius Recrutement se termine le <b>${end}</b>. Ensuite, votre compte passera automatiquement à la formule <b>Découverte</b>, gratuite : 2 offres ouvertes, 20 candidats testés par mois et 1 recruteur. Rien n’est supprimé.</p><p>Pour garder toutes les fonctions, choisissez la formule Essentiel (25 000 F HT par mois) ou Pro (60 000 F HT par mois) : répondez à cet e-mail, écrivez à consultingalveris@gmail.com ou appelez le (+221) 76 595 67 65.</p>${button(`${BASE_URL}/app#/account`, 'Voir ma formule')}`, c.id) });
+    } else if (c.trial_until <= now()) {
+      run(`UPDATE companies SET trial_mail=2 WHERE id=?`, c.id);
+      if (c.plan !== 'decouverte') continue;
+      await sendMail({ to: u.email, companyId: c.id, subject: 'Votre compte passe à la formule Découverte', html: mailLayout('Votre essai gratuit est terminé',
+        `<p>Bonjour ${esc(u.name)},</p><p>Votre essai gratuit de Genius Recrutement est terminé. Votre compte passe à la formule <b>Découverte</b>, gratuite : 2 offres ouvertes, 20 candidats testés par mois et 1 recruteur. Vos offres, vos tests et vos candidats restent accessibles.</p><p>Pour retrouver toutes les fonctions, choisissez la formule Essentiel (25 000 F HT par mois) ou Pro (60 000 F HT par mois) : écrivez à consultingalveris@gmail.com ou appelez le (+221) 76 595 67 65.</p>${button(`${BASE_URL}/app#/account`, 'Voir ma formule')}`, c.id) });
+    }
+  }
+}
+setTimeout(trialMails, 90_000); setInterval(trialMails, 3600_000);
 setTimeout(offsiteBackup, 60_000); setInterval(offsiteBackup, 6 * 3600_000);
 setTimeout(offsiteFiles, 120_000); setInterval(offsiteFiles, 6 * 3600_000);
 
@@ -289,7 +313,34 @@ function tooMany(key) {
   const t = now(), a = (attempts.get(key) || []).filter(x => t - x < 15 * 60_000); a.push(t); attempts.set(key, a); return a.length > 10;
 }
 const isSuper = u => !!SUPERADMIN && u.email === SUPERADMIN;
-const userOut = u => ({ name: u.name, email: u.email, company: u.company, logo: logoUrl(u.company_id), superadmin: isSuper(u), verified: !!u.verified, companyStatus: u.cstatus || 'valide', role: u.role || 'admin' });
+/* formules : essai de 2 mois (toutes les fonctions), puis Découverte, Essentiel ou Pro */
+const TRIAL_DAYS = 60, UNLIMITED = 1e9;
+const PLANS = {
+  decouverte: { name: 'Découverte', offers: 2, tests: 20, users: 1, logo: false },
+  essentiel: { name: 'Essentiel', offers: 5, tests: 100, users: 3, logo: true },
+  pro: { name: 'Pro', offers: UNLIMITED, tests: 500, users: 10, logo: true }
+};
+function planOf(companyId) {
+  const c = q1(`SELECT plan, trial_until FROM companies WHERE id=?`, companyId) || {};
+  const base = PLANS[c.plan] ? c.plan : 'decouverte';
+  if (c.trial_until && c.trial_until > now()) return { ...PLANS.pro, key: 'essai', name: 'Essai gratuit', trial: true, trialUntil: c.trial_until, base };
+  return { ...PLANS[base], key: base, trial: false, trialUntil: c.trial_until || null, base };
+}
+const monthStart = () => { const d = new Date(); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1); };
+function usageOf(companyId) {
+  return { offers: q1(`SELECT COUNT(*) n FROM offers WHERE company_id=? AND status='ouverte'`, companyId).n,
+    tests: q1(`SELECT COUNT(*) n FROM candidates c JOIN tests t ON t.id=c.test_id WHERE t.company_id=? AND c.invited_at>=?`, companyId, monthStart()).n,
+    users: q1(`SELECT COUNT(*) n FROM users WHERE company_id=?`, companyId).n };
+}
+const planOut = companyId => { const p = planOf(companyId); const lim = v => v >= UNLIMITED ? null : v;
+  return { key: p.key, name: p.name, trial: p.trial, trialUntil: p.trialUntil, base: p.base, baseName: PLANS[p.base].name,
+    limits: { offers: lim(p.offers), tests: lim(p.tests), users: lim(p.users), logo: p.logo }, usage: usageOf(companyId) }; };
+const upgradeHint = 'Pour aller plus loin, passez à la formule supérieure : écrivez à consultingalveris@gmail.com ou appelez le (+221) 76 595 67 65.';
+const showLogo = companyId => planOf(companyId).logo;
+const normNinea = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 30);
+const normPhone = v => String(v || '').replace(/\D/g, '').replace(/^00/, '').replace(/^221(?=\d{9}$)/, '').slice(-12);
+const userOut = u => ({ name: u.name, email: u.email, company: u.company, logo: logoUrl(u.company_id), superadmin: isSuper(u), verified: !!u.verified, companyStatus: u.cstatus || 'valide', role: u.role || 'admin',
+  plan: planOut(u.company_id), needsInfo: !(q1(`SELECT ninea FROM companies WHERE id=?`, u.company_id) || {}).ninea });
 // Peut envoyer des e-mails aux candidats et publier des offres visibles : adresse confirmée et entreprise validée.
 const canReach = u => isSuper(u) || (!!u.verified && u.cstatus === 'valide');
 const reachMsg = u => !u.verified ? 'Confirmez d’abord votre adresse e-mail (lien reçu à l’inscription) : les envois aux candidats seront alors possibles.'
@@ -327,13 +378,17 @@ on('POST', '/api/signup', async (req, res, { body }) => {
   if (pass.length < 8) return fail(res, 400, 'Le mot de passe doit faire au moins 8 caractères.');
   if (q1(`SELECT id FROM users WHERE email=?`, email)) return fail(res, 409, 'Un compte existe déjà avec cette adresse. Utilisez « Mot de passe oublié » si besoin.');
   const boss = !!SUPERADMIN && email === SUPERADMIN;
-  const cid = run(`INSERT INTO companies(name,created_at,status) VALUES(?,?,?)`, company, now(), boss ? 'valide' : 'en_attente').lastInsertRowid;
+  const ninea = normNinea(body.ninea), phone = normPhone(body.phone);
+  if (!boss && ninea.length < 5) return fail(res, 400, 'Indiquez le NINEA de l’entreprise (ou son numéro d’immatriculation si elle est hors du Sénégal).');
+  if (!boss && phone.length < 7) return fail(res, 400, 'Indiquez un numéro de téléphone valide.');
+  if (ninea && q1(`SELECT id FROM companies WHERE ninea=?`, ninea)) return fail(res, 409, 'Cette entreprise a déjà un compte sur Genius Recrutement. Demandez à son administrateur de vous inviter dans l’équipe, ou écrivez à consultingalveris@gmail.com.');
+  const cid = run(`INSERT INTO companies(name,created_at,status,ninea,phone,trial_until,plan) VALUES(?,?,?,?,?,?,?)`, company, now(), boss ? 'valide' : 'en_attente', ninea || null, phone || null, now() + TRIAL_DAYS * 864e5, boss ? 'pro' : 'decouverte').lastInsertRowid;
   const uid = run(`INSERT INTO users(company_id,name,email,pass,created_at,verified) VALUES(?,?,?,?,?,?)`, cid, name, email, hashPass(pass), now(), boss ? 1 : 0).lastInsertRowid;
   setSession(res, uid);
   if (!boss) {
     sendVerify('user', uid, email, name);
     if (SUPERADMIN) sendMail({ to: SUPERADMIN, subject: `Nouvelle entreprise à valider : ${company}`, html: mailLayout('Nouvelle entreprise inscrite',
-      `<p><b>${esc(company)}</b> vient de créer un compte (${esc(name)}, ${esc(email)}).</p><p>Vérifiez qu’il s’agit d’une vraie entreprise avant de valider : ses offres ne seront visibles qu’après votre accord.</p>${button(`${BASE_URL}/app#/admin`, 'Ouvrir l’administration')}`) });
+      `<p><b>${esc(company)}</b> vient de créer un compte (${esc(name)}, ${esc(email)}, tél. ${esc(phone)}, NINEA ${esc(ninea)}).</p><p>Vérifiez qu’il s’agit d’une vraie entreprise avant de valider : ses offres ne seront visibles qu’après votre accord.</p>${button(`${BASE_URL}/app#/admin`, 'Ouvrir l’administration')}`) });
   }
   send(res, 200, { user: userOut(currentUserById(uid)) });
 });
@@ -381,9 +436,22 @@ on('PUT', '/api/company/logo', async (req, res, { user, body }) => {
   const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(body.dataUrl || ''));
   if (!m) return fail(res, 400, 'Format accepté : PNG, JPEG ou WebP.');
   if (m[2].length > 400_000) return fail(res, 413, 'Image trop lourde (300 Ko au plus).');
-  run(`UPDATE companies SET logo=?, logo_v=? WHERE id=?`, body.dataUrl, now(), user.company_id);
+  if (!showLogo(user.company_id)) return fail(res, 403, `Le logo est inclus dans les formules Essentiel et Pro. ${upgradeHint}`);
+  run(`UPDATE companies SET logo=?, logo_v=?, logo_hash=? WHERE id=?`, body.dataUrl, now(), sha(body.dataUrl), user.company_id);
   send(res, 200, { logo: logoUrl(user.company_id) });
 }, { auth: true, maxBody: 600_000 });
+on('GET', '/api/company/plan', async (req, res, { user }) => {
+  const c = q1(`SELECT ninea, phone FROM companies WHERE id=?`, user.company_id);
+  send(res, 200, { plan: planOut(user.company_id), ninea: c.ninea || '', phone: c.phone || '' });
+}, { auth: true });
+on('PUT', '/api/company/info', async (req, res, { user, body }) => {
+  if (user.role === 'recruteur') return fail(res, 403, 'Seul l’administrateur du compte peut modifier ces informations.');
+  const ninea = normNinea(body.ninea), phone = normPhone(body.phone);
+  if (ninea.length < 5) return fail(res, 400, 'Indiquez le NINEA de l’entreprise (ou son numéro d’immatriculation si elle est hors du Sénégal).');
+  if (phone.length < 7) return fail(res, 400, 'Indiquez un numéro de téléphone valide.');
+  if (q1(`SELECT id FROM companies WHERE ninea=? AND id!=?`, ninea, user.company_id)) return fail(res, 409, 'Ce NINEA est déjà utilisé par une autre entreprise inscrite. Écrivez à consultingalveris@gmail.com si c’est une erreur.');
+  run(`UPDATE companies SET ninea=?, phone=? WHERE id=?`, ninea, phone, user.company_id); send(res, 200, { ok: true });
+}, { auth: true });
 on('DELETE', '/api/company/logo', async (req, res, { user }) => {
   run(`UPDATE companies SET logo=NULL, logo_v=NULL WHERE id=?`, user.company_id); send(res, 200, { ok: true });
 }, { auth: true });
@@ -447,10 +515,13 @@ on('POST', '/api/tests/:id/invite', async (req, res, { user, params, body }) => 
   const list = Array.isArray(body.candidates) ? body.candidates.slice(0, 300) : [];
   const out = { added: 0, sent: 0, test: 0, failed: 0, skipped: [] };
   if (body.send !== false && !canReach(user)) { body.send = false; out.blocked = reachMsg(user); }
+  const pl = planOf(t.company_id); let left = pl.tests - usageOf(t.company_id).tests;
   for (const x of list) {
     const name = clean(x.name, 120), email = clean(x.email, 200).toLowerCase();
     if (!name || !isEmail(email)) { out.skipped.push(`${name || '?'} <${email || '?'}> : nom ou e-mail invalide`); continue; }
     if (q1(`SELECT id FROM candidates WHERE test_id=? AND email=?`, t.id, email)) { out.skipped.push(`${email} : déjà invité à ce test`); continue; }
+    if (left <= 0) { out.skipped.push(`${email} : limite de ${pl.tests} candidats testés ce mois-ci atteinte (formule ${pl.name})`); out.limit = `Votre formule ${pl.name} permet de tester ${pl.tests} candidats par mois. ${upgradeHint}`; continue; }
+    left--;
     const c = { name, email, token: rnd(18) };
     c.id = run(`INSERT INTO candidates(test_id,name,email,token,invited_at) VALUES(?,?,?,?,?)`, t.id, name, email, c.token, now()).lastInsertRowid;
     out.added++;
@@ -749,7 +820,7 @@ on('POST', '/api/cand/push', withCand(async (req, res, { cu, body }) => {
 /* offres : lecture publique */
 const offerStatus = o => o.status !== 'ouverte' ? 'fermee' : (o.closes_at && now() > new Date(o.closes_at + 'T23:59:59').getTime() ? 'fermee' : 'ouverte');
 const offerOut = (o, extra = {}) => ({ url: `${BASE_URL}/offre/${o.id}-${String(o.title).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)}`, id: o.id, title: o.title, family: o.family, familyName: famName(o.family), city: o.city || '', contract: o.contract || '',
-  description: o.description, createdAt: o.created_at, closesAt: o.closes_at || '', status: offerStatus(o), company: o.company, companyLogo: o.logo_v ? `/api/logo/${o.company_id}?v=${o.logo_v}` : null,
+  description: o.description, createdAt: o.created_at, closesAt: o.closes_at || '', status: offerStatus(o), company: o.company, companyLogo: o.logo_v && showLogo(o.company_id) ? `/api/logo/${o.company_id}?v=${o.logo_v}` : null,
   hasTest: !!o.test_id, ...extra });
 
 /* page publique d'une offre, partageable (WhatsApp, LinkedIn, Facebook) avec aperçu */
@@ -757,7 +828,7 @@ const slug = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase
 const offerUrl = o => `${BASE_URL}/offre/${o.id}-${slug(o.title)}`;
 function offerPage(o) {
   const st = offerStatus(o), where = [o.company, o.city, o.contract].filter(Boolean).join(' · ');
-  const img = o.logo_v ? `${BASE_URL}/api/logo/${o.company_id}?v=${o.logo_v}` : `${BASE_URL}/img/icone-512.png`;
+  const img = o.logo_v && showLogo(o.company_id) ? `${BASE_URL}/api/logo/${o.company_id}?v=${o.logo_v}` : `${BASE_URL}/img/icone-512.png`;
   const desc = o.description.replace(/\s+/g, ' ').slice(0, 190) + (o.description.length > 190 ? '…' : '');
   const title = `${o.title} — ${o.company}${o.city ? ', ' + o.city : ''}`;
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -768,7 +839,7 @@ function offerPage(o) {
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"><link rel="stylesheet" href="/style.css">
 <style>.pg{max-width:780px;margin:auto;padding:28px 16px 64px}.hd{display:flex;gap:16px;align-items:center}.lg{width:72px;height:72px;border:1px solid var(--line);border-radius:12px;background:#fff;display:grid;place-items:center;overflow:hidden;flex:none}.lg img{max-width:64px;max-height:64px}.desc{white-space:pre-wrap;color:var(--fg-2);line-height:1.6}</style></head>
 <body><header class="top"><div class="top-in"><a class="brand" href="/espace"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg></span>Genius Recrutement</a></div></header>
-<main class="pg"><div class="card col"><div class="hd"><div class="lg">${o.logo_v ? `<img src="/api/logo/${o.company_id}?v=${o.logo_v}" alt="Logo ${esc(o.company)}">` : `<b>${esc(o.company.slice(0, 2).toUpperCase())}</b>`}</div>
+<main class="pg"><div class="card col"><div class="hd"><div class="lg">${o.logo_v && showLogo(o.company_id) ? `<img src="/api/logo/${o.company_id}?v=${o.logo_v}" alt="Logo ${esc(o.company)}">` : `<b>${esc(o.company.slice(0, 2).toUpperCase())}</b>`}</div>
 <div><h1 style="font-size:26px">${esc(o.title)}</h1><p class="muted">${esc(where)}</p></div></div>
 <p class="small muted">${esc(famName(o.family))} · publiée le ${new Date(o.created_at).toLocaleDateString('fr-FR')}${o.closes_at ? ` · candidatures jusqu’au ${new Date(o.closes_at + 'T12:00').toLocaleDateString('fr-FR')}` : ''}</p>
 <div class="desc">${esc(o.description)}</div>
@@ -819,12 +890,15 @@ on('POST', '/api/offers/:id/apply', withCand(async (req, res, { cu, params, body
 }));
 // Transmet une candidature à l'entreprise : test envoyé si l'offre en a un, puis avis au recruteur.
 async function releaseApp(app, o, cu) {
-  let tested = null;
-  if (o.test_id && o.auto_test) tested = await inviteFromApplication(app, o, cu);
+  let tested = null, quota = false;
+  if (o.test_id && o.auto_test) {
+    const pl = planOf(o.company_id), known = q1(`SELECT id FROM candidates WHERE test_id=? AND email=?`, o.test_id, cu.email);
+    if (known || usageOf(o.company_id).tests < pl.tests) tested = await inviteFromApplication(app, o, cu); else quota = pl;
+  }
   const t = o.test_id ? q1(`SELECT reply_email FROM tests WHERE id=?`, o.test_id) : null;
   const to = t?.reply_email || q1(`SELECT email FROM users WHERE company_id=? ORDER BY id LIMIT 1`, o.company_id)?.email;
   if (to) sendMail({ to, companyId: o.company_id, subject: `Nouvelle candidature : ${cu.name} — ${o.title}`, html: mailLayout('Nouvelle candidature',
-    `<p><b>${esc(cu.name)}</b> a postulé à l’offre <b>${esc(o.title)}</b>.${tested ? '<br>Le test lui a été envoyé automatiquement.' : ''}</p>${button(`${BASE_URL}/app#/offres/${o.id}`, 'Voir la candidature')}`, o.company_id) });
+    `<p><b>${esc(cu.name)}</b> a postulé à l’offre <b>${esc(o.title)}</b>.${tested ? '<br>Le test lui a été envoyé automatiquement.' : ''}${quota ? `<br><b>Le test ne lui a pas été envoyé</b> : votre formule ${esc(quota.name)} permet de tester ${quota.tests} candidats par mois, et cette limite est atteinte. ${esc(upgradeHint)}` : ''}</p>${button(`${BASE_URL}/app#/offres/${o.id}`, 'Voir la candidature')}`, o.company_id) });
   return tested;
 }
 // Candidatures en attente de confirmation de l'adresse : transmises au clic sur le lien.
@@ -854,7 +928,7 @@ on('GET', '/api/cand/applications', withCand(async (req, res, { cu }) => {
     k.status AS tstatus, k.token FROM applications a JOIN offers o ON o.id=a.offer_id JOIN companies c ON c.id=o.company_id
     LEFT JOIN candidates k ON k.id=a.candidate_id WHERE a.cu_id=? ORDER BY a.created_at DESC`, cu.id);
   send(res, 200, { applications: rows.map(r => ({ id: r.id, offerId: r.offer_id, title: r.title, company: r.company, city: r.city || '', contract: r.contract || '',
-    companyLogo: r.logo_v ? `/api/logo/${r.company_id}?v=${r.logo_v}` : null, status: r.status, stage: r.stage || 'nouvelle', createdAt: r.created_at, interview: (iv => iv && iv.at > now() - 3600_000 ? { at: iv.at, label: fmtDakar(iv.at), place: iv.place || '', note: iv.note || '' } : null)(q1(`SELECT * FROM interviews WHERE app_id=? ORDER BY id DESC LIMIT 1`, r.id)),
+    companyLogo: r.logo_v && showLogo(r.company_id) ? `/api/logo/${r.company_id}?v=${r.logo_v}` : null, status: r.status, stage: r.stage || 'nouvelle', createdAt: r.created_at, interview: (iv => iv && iv.at > now() - 3600_000 ? { at: iv.at, label: fmtDakar(iv.at), place: iv.place || '', note: iv.note || '' } : null)(q1(`SELECT * FROM interviews WHERE app_id=? ORDER BY id DESC LIMIT 1`, r.id)),
     test: r.token ? { status: r.tstatus, link: `/t/${r.token}` } : null })) });
 }));
 
@@ -892,7 +966,12 @@ on('GET', '/api/rh/offers', async (req, res, { user }) => {
   const rows = qa(`SELECT o.*, (SELECT COUNT(*) FROM applications a WHERE a.offer_id=o.id AND a.status!='attente') AS n FROM offers o WHERE o.company_id=? ORDER BY o.created_at DESC`, user.company_id);
   send(res, 200, { offers: rows.map(o => ({ ...offerOut(o), testId: o.test_id, autoTest: !!o.auto_test, applications: o.n, views: o.views || 0 })), contracts: CONTRACTS });
 }, { auth: true });
+function offerLimit(user) {
+  const pl = planOf(user.company_id);
+  return usageOf(user.company_id).offers >= pl.offers ? `Votre formule ${pl.name} permet ${pl.offers} offre${pl.offers > 1 ? 's' : ''} ouverte${pl.offers > 1 ? 's' : ''} en même temps. Fermez une offre ou passez à la formule supérieure : écrivez à consultingalveris@gmail.com ou appelez le (+221) 76 595 67 65.` : null;
+}
 on('POST', '/api/rh/offers', async (req, res, { user, body }) => {
+  const lim = offerLimit(user); if (lim) return fail(res, 403, lim);
   const b = readOffer(body, user);
   const id = run(`INSERT INTO offers(company_id,test_id,auto_test,title,family,city,contract,description,created_at,closes_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
     user.company_id, b.testId, b.auto, b.title, b.family, b.city, b.contract, b.description, now(), b.closes).lastInsertRowid;
@@ -903,7 +982,9 @@ on('POST', '/api/rh/offers', async (req, res, { user, body }) => {
 }, { auth: true });
 on('PUT', '/api/rh/offers/:id', async (req, res, { user, params, body }) => {
   const o = ownOffer(user, params.id); if (!o) return fail(res, 404, 'Offre introuvable.');
-  if (body.status && Object.keys(body).length === 1) { run(`UPDATE offers SET status=? WHERE id=?`, body.status === 'ouverte' ? 'ouverte' : 'fermee', o.id); return send(res, 200, { ok: true }); }
+  if (body.status && Object.keys(body).length === 1) {
+    if (body.status === 'ouverte' && o.status !== 'ouverte') { const lim = offerLimit(user); if (lim) return fail(res, 403, lim); }
+    run(`UPDATE offers SET status=? WHERE id=?`, body.status === 'ouverte' ? 'ouverte' : 'fermee', o.id); return send(res, 200, { ok: true }); }
   const b = readOffer(body, user);
   run(`UPDATE offers SET test_id=?,auto_test=?,title=?,family=?,city=?,contract=?,description=?,closes_at=? WHERE id=?`, b.testId, b.auto, b.title, b.family, b.city, b.contract, b.description, b.closes, o.id);
   send(res, 200, { ok: true });
@@ -1170,7 +1251,7 @@ on('POST', '/api/team/invite', async (req, res, { user, body }) => {
   if (!name) return fail(res, 400, 'Indiquez le nom de votre collègue.');
   if (!isEmail(email)) return fail(res, 400, 'Adresse e-mail invalide.');
   if (q1(`SELECT id FROM users WHERE email=?`, email)) return fail(res, 409, 'Cette adresse a déjà un compte recruteur sur Genius Recrutement.');
-  if (q1(`SELECT COUNT(*) n FROM users WHERE company_id=?`, user.company_id).n >= 10) return fail(res, 400, 'Votre compte compte déjà 10 recruteurs.');
+  { const pl = planOf(user.company_id); if (usageOf(user.company_id).users >= pl.users) return fail(res, 403, `Votre formule ${pl.name} comprend ${pl.users} accès recruteur${pl.users > 1 ? 's' : ''}. ${upgradeHint}`); }
   run(`DELETE FROM team_invites WHERE company_id=? AND email=?`, user.company_id, email);
   const tok = rnd(32); run(`INSERT INTO team_invites(token,company_id,name,email,by_user,expires) VALUES(?,?,?,?,?,?)`, sha(tok), user.company_id, name, email, user.id, now() + 7 * 864e5);
   const r = await sendMail({ to: email, companyId: user.company_id, replyTo: user.email, subject: `${user.name} vous invite à rejoindre ${user.company} sur Genius Recrutement`, html: mailLayout('Rejoignez l’équipe de recrutement',
@@ -1193,6 +1274,7 @@ on('POST', '/api/team/join', async (req, res, { body }) => {
   if (!i) return fail(res, 404, 'Ce lien d’invitation n’est plus valable.');
   const pass = String(body.password || ''); if (pass.length < 8) return fail(res, 400, 'Le mot de passe doit faire au moins 8 caractères.');
   if (q1(`SELECT id FROM users WHERE email=?`, i.email)) return fail(res, 409, 'Un compte existe déjà avec cette adresse. Connectez-vous.');
+  { const pl = planOf(i.company_id); if (usageOf(i.company_id).users >= pl.users) return fail(res, 403, `L’équipe a atteint le nombre d’accès prévu par sa formule (${pl.users}). Demandez à votre collègue de passer à la formule supérieure.`); }
   const uid = run(`INSERT INTO users(company_id,name,email,pass,created_at,verified,role) VALUES(?,?,?,?,?,1,'recruteur')`, i.company_id, clean(body.name, 120) || i.name, i.email, hashPass(pass), now()).lastInsertRowid;
   run(`DELETE FROM team_invites WHERE token=?`, i.token);
   setSession(res, uid); send(res, 200, { user: userOut(currentUserById(uid)) });
@@ -1219,7 +1301,7 @@ on('POST', '/api/cand/verify/resend', withCand(async (req, res, { cu }) => {
 /* administration de la plateforme (propriétaire) */
 const superOnly = h => async (req, res, ctx) => isSuper(ctx.user) ? h(req, res, ctx) : fail(res, 403, 'Réservé au propriétaire de la plateforme.');
 on('GET', '/api/admin/companies', superOnly(async (req, res) => {
-  const rows = qa(`SELECT c.id, c.name, c.status, c.created_at, (SELECT name FROM users WHERE company_id=c.id ORDER BY id LIMIT 1) AS uname,
+  const rows = qa(`SELECT c.id, c.name, c.status, c.created_at, c.plan, c.trial_until, c.ninea, c.phone, c.logo_hash, (SELECT name FROM users WHERE company_id=c.id ORDER BY id LIMIT 1) AS uname,
     (SELECT email FROM users WHERE company_id=c.id ORDER BY id LIMIT 1) AS uemail, (SELECT verified FROM users WHERE company_id=c.id ORDER BY id LIMIT 1) AS uverified,
     (SELECT COUNT(*) FROM offers WHERE company_id=c.id) AS offers, (SELECT COUNT(*) FROM tests WHERE company_id=c.id) AS tests
     FROM companies c ORDER BY CASE c.status WHEN 'en_attente' THEN 0 WHEN 'suspendue' THEN 1 ELSE 2 END, c.created_at DESC`);
@@ -1229,15 +1311,45 @@ on('GET', '/api/admin/companies', superOnly(async (req, res) => {
   const cands = qa(`SELECT u.id,u.name,u.email,u.family,u.verified,u.created_at,u.cv_name,(SELECT COUNT(*) FROM applications a WHERE a.cu_id=u.id) AS apps FROM cusers u ORDER BY u.created_at DESC LIMIT 100`)
     .map(u => ({ name: u.name, email: u.email, family: (FAMILIES.find(f => f.k === u.family) || {}).name || '', verified: !!u.verified, createdAt: u.created_at, cv: !!u.cv_name, apps: u.apps }));
   const mails = qa(`SELECT recipient,subject,status,error,created_at FROM outbox WHERE company_id IS NULL ORDER BY id DESC LIMIT 30`);
-  send(res, 200, { companies: rows.map(r => ({ id: r.id, name: r.name, status: r.status, createdAt: r.created_at, user: r.uname, email: r.uemail, verified: !!r.uverified, offers: r.offers, tests: r.tests })), stats, candidates: cands, mails });
+  const sim = similarCompanies(rows);
+  send(res, 200, { companies: rows.map(r => ({ id: r.id, name: r.name, status: r.status, createdAt: r.created_at, user: r.uname, email: r.uemail, verified: !!r.uverified, offers: r.offers, tests: r.tests,
+    plan: r.plan, trialUntil: r.trial_until, ninea: r.ninea || '', phone: r.phone || '', similar: sim[r.id] || [] })), stats, candidates: cands, mails });
 }), { auth: true });
 on('POST', '/api/admin/cand-verify', superOnly(async (req, res, { body }) => {
   const cu = q1(`SELECT * FROM cusers WHERE email=?`, clean(body.email, 200).toLowerCase()); if (!cu) return fail(res, 404, 'Candidat introuvable.');
   if (body.confirm) { run(`UPDATE cusers SET verified=1 WHERE id=?`, cu.id); await releasePending(cu.id); return send(res, 200, { ok: true }); }
   const r = await sendVerify('cand', cu.id, cu.email, cu.name); send(res, 200, { ok: true, sent: !!r.sent });
 }), { auth: true });
+// Repère les comptes qui ressemblent à une entreprise déjà inscrite (même NINEA, téléphone, domaine e-mail, logo ou nom proche).
+const FREE_MAIL = new Set(['gmail.com', 'yahoo.fr', 'yahoo.com', 'hotmail.com', 'hotmail.fr', 'outlook.com', 'outlook.fr', 'live.fr', 'live.com', 'icloud.com', 'orange.sn', 'aol.com', 'msn.com', 'protonmail.com', 'proton.me']);
+const STOP = /\b(sarl|suarl|sa|sas|sasu|gie|ets|etablissements?|entreprise|societe|group|groupe|senegal|sn|consulting|services?)\b/g;
+const normName = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(STOP, ' ').replace(/\s+/g, '');
+function similarCompanies(rows) {
+  const doms = {}; for (const u of qa(`SELECT company_id, email FROM users`)) { const d = u.email.split('@')[1]; if (d && !FREE_MAIL.has(d)) (doms[u.company_id] ||= new Set()).add(d); }
+  const out = {};
+  for (const a of rows) for (const b of rows) {
+    if (a.id === b.id) continue; const why = [];
+    if (a.ninea && a.ninea === b.ninea) why.push('même NINEA');
+    if (a.phone && a.phone === b.phone) why.push('même téléphone');
+    if (a.logo_hash && a.logo_hash === b.logo_hash) why.push('même logo');
+    const na = normName(a.name), nb = normName(b.name);
+    if (na.length >= 3 && nb.length >= 3 && (na === nb || (Math.min(na.length, nb.length) >= 5 && (na.includes(nb) || nb.includes(na))))) why.push('nom proche');
+    if ([...(doms[a.id] || [])].some(d => doms[b.id]?.has(d))) why.push('même domaine e-mail');
+    if (why.length) (out[a.id] ||= []).push({ id: b.id, name: b.name, why: why.join(', '), trialUntil: b.trial_until, plan: b.plan });
+  }
+  return out;
+}
 on('PUT', '/api/admin/companies/:id', superOnly(async (req, res, { params, body }) => {
   const c = q1(`SELECT * FROM companies WHERE id=?`, +params.id); if (!c) return fail(res, 404, 'Entreprise introuvable.');
+  if (body.plan !== undefined || body.trialUntil !== undefined) {
+    if (body.plan !== undefined) { if (!PLANS[body.plan]) return fail(res, 400, 'Formule inconnue.'); run(`UPDATE companies SET plan=? WHERE id=?`, body.plan, c.id); }
+    if (body.trialUntil !== undefined) {
+      const t = body.trialUntil ? Date.parse(body.trialUntil + 'T23:59:00Z') : now() - 1000;
+      if (!Number.isFinite(t)) return fail(res, 400, 'Date de fin d’essai invalide.');
+      run(`UPDATE companies SET trial_until=?, trial_mail=? WHERE id=?`, t, t > now() + 7 * 864e5 ? 0 : 1, c.id);
+    }
+    return send(res, 200, { ok: true });
+  }
   const st = { valide: 'valide', suspendue: 'suspendue', en_attente: 'en_attente' }[body.status]; if (!st) return fail(res, 400, 'Statut inconnu.');
   run(`UPDATE companies SET status=? WHERE id=?`, st, c.id);
   const u = q1(`SELECT * FROM users WHERE company_id=? ORDER BY id LIMIT 1`, c.id);
